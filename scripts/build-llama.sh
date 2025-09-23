@@ -7,8 +7,9 @@ set -e
 BUILD_TYPE=${1:-cpu}
 LLAMA_DIR="llama.cpp"
 BUILD_DIR="build"
-TARGET_DIR="worker/internal/llama"
+TARGET_DIR="internal/llama"
 CACHE_DIR=".build_cache"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Building llama.cpp with $BUILD_TYPE acceleration..."
 
