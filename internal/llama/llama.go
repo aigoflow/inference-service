@@ -1,7 +1,7 @@
 package llama
 
 /*
-#cgo CXXFLAGS: -I${SRCDIR}/include -I${SRCDIR}/src -I${SRCDIR}/ggml_include -std=c++11
+#cgo CXXFLAGS: -I${SRCDIR}/include -I${SRCDIR}/src -I${SRCDIR}/ggml_include -std=c++11 -DGGML_USE_METAL
 #cgo LDFLAGS: -L${SRCDIR} -lbinding -lllama -lggml -lggml-base -lggml-cpu -lggml-blas -lggml-metal -lm
 #cgo darwin LDFLAGS: -framework Accelerate -framework Foundation -framework Metal -framework MetalKit -framework MetalPerformanceShaders
 #cgo linux LDFLAGS: -lstdc++
@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 	"unsafe"
 )
 
@@ -197,25 +198,103 @@ func downloadFile(url, filepath string) error {
 	}
 	defer out.Close()
 
-	// Log download progress
+	// Get file size
 	size := resp.ContentLength
+	sizeMB := float64(size) / 1024 / 1024
+
 	if size > 0 {
-		slog.Info("Starting download", "size_mb", fmt.Sprintf("%.1f", float64(size)/1024/1024), "file", filepath)
+		slog.Info("Starting download", 
+			"size_mb", fmt.Sprintf("%.1f", sizeMB), 
+			"size_gb", fmt.Sprintf("%.2f", sizeMB/1024),
+			"file", filepath)
 	} else {
-		slog.Info("Starting download", "file", filepath)
+		slog.Info("Starting download (unknown size)", "file", filepath)
 	}
 
-	_, err = io.Copy(out, resp.Body)
+	// Create progress writer
+	start := time.Now()
+	var downloaded int64
 	
-	if err == nil {
+	// Progress reporting function
+	reportProgress := func() {
+		elapsed := time.Since(start)
+		downloadedMB := float64(downloaded) / 1024 / 1024
+		speed := downloadedMB / elapsed.Seconds()
+		
 		if size > 0 {
-			slog.Info("Download completed", "size_mb", fmt.Sprintf("%.1f", float64(size)/1024/1024), "file", filepath)
+			progress := float64(downloaded) / float64(size) * 100
+			eta := time.Duration(float64(elapsed) * (float64(size)/float64(downloaded) - 1))
+			
+			slog.Info("Download progress", 
+				"progress_percent", fmt.Sprintf("%.1f", progress),
+				"downloaded_mb", fmt.Sprintf("%.1f", downloadedMB),
+				"total_mb", fmt.Sprintf("%.1f", sizeMB),
+				"speed_mbps", fmt.Sprintf("%.2f", speed),
+				"eta", eta.Round(time.Second).String(),
+				"file", filepath)
 		} else {
-			slog.Info("Download completed", "file", filepath)
+			slog.Info("Download progress", 
+				"downloaded_mb", fmt.Sprintf("%.1f", downloadedMB),
+				"speed_mbps", fmt.Sprintf("%.2f", speed),
+				"elapsed", elapsed.Round(time.Second).String(),
+				"file", filepath)
+		}
+	}
+
+	// Progress reporting ticker (every 10 seconds)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	
+	// Start progress reporting in background
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				reportProgress()
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	// Copy with progress tracking
+	buf := make([]byte, 32*1024) // 32KB buffer
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			downloaded += int64(n)
+			_, writeErr := out.Write(buf[:n])
+			if writeErr != nil {
+				done <- true
+				return writeErr
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			done <- true
+			return err
 		}
 	}
 	
-	return err
+	// Stop progress reporting
+	done <- true
+	
+	// Final progress report
+	elapsed := time.Since(start)
+	downloadedMB := float64(downloaded) / 1024 / 1024
+	avgSpeed := downloadedMB / elapsed.Seconds()
+	
+	slog.Info("Download completed", 
+		"final_size_mb", fmt.Sprintf("%.1f", downloadedMB),
+		"final_size_gb", fmt.Sprintf("%.2f", downloadedMB/1024),
+		"duration", elapsed.Round(time.Second).String(),
+		"avg_speed_mbps", fmt.Sprintf("%.2f", avgSpeed),
+		"file", filepath)
+	
+	return nil
 }
 
 func getIntParam(params map[string]interface{}, key string, defaultVal int) int {

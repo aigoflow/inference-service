@@ -18,7 +18,7 @@ build-llama-%:
 internal/llama/libbinding.a: internal/llama/binding.cpp internal/llama/binding.h
 	@echo "Building C++ binding..."
 	cd internal/llama && \
-	c++ -O3 -DNDEBUG -std=c++11 -fPIC -c binding.cpp -I./include -I./src -I./ggml_include && \
+	c++ -O3 -DNDEBUG -DGGML_USE_METAL -std=c++11 -fPIC -c binding.cpp -I./include -I./src -I./ggml_include && \
 	ar rcs libbinding.a binding.o
 
 # Build the server binary  
