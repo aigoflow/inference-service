@@ -179,7 +179,7 @@ func LoadWithAutoDownload(modelPath, modelURL string, cfg Config) (*Model, error
 	return Load(cfg)
 }
 
-// downloadFile downloads a file from URL to local path
+// downloadFile downloads a file from URL to local path with progress logging
 func downloadFile(url, filepath string) error {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -197,7 +197,24 @@ func downloadFile(url, filepath string) error {
 	}
 	defer out.Close()
 
+	// Log download progress
+	size := resp.ContentLength
+	if size > 0 {
+		slog.Info("Starting download", "size_mb", fmt.Sprintf("%.1f", float64(size)/1024/1024), "file", filepath)
+	} else {
+		slog.Info("Starting download", "file", filepath)
+	}
+
 	_, err = io.Copy(out, resp.Body)
+	
+	if err == nil {
+		if size > 0 {
+			slog.Info("Download completed", "size_mb", fmt.Sprintf("%.1f", float64(size)/1024/1024), "file", filepath)
+		} else {
+			slog.Info("Download completed", "file", filepath)
+		}
+	}
+	
 	return err
 }
 

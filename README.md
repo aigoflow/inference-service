@@ -44,13 +44,15 @@ A high-performance Go microservice for AI inference that's faster than Ollama by
 └─────────────────────────────────────────┘
 ```
 
-## 📋 Supported Models
+## 🧪 Tested Models
 
 | Model | Size | Port | NATS Subject | Prompt Format |
 |-------|------|------|--------------|---------------|
 | Gemma3-270M | 235MB | 5770 | `inference.request.gemma3-270m` | Gemma-3 |
 | Qwen3-4B | 2.32GB | 5771 | `inference.request.qwen3-4b` | ChatML |
 | GPT-OSS-20B | ~20GB | 5772 | `inference.request.gpt-oss-20b` | OpenAI |
+
+*Models are automatically downloaded on first use if not present.*
 
 ## 🛠️ Quick Start
 
@@ -79,30 +81,26 @@ make build-llama  # Auto-detects best GPU support
 make build-all    # Builds server + CLI tools
 ```
 
-4. **Download models** (optional - models auto-download on first use)
-```bash
-# Models will be downloaded automatically to data/models/
-# Or manually place GGUF models in:
-# - data/models/gemma3-270m/model.gguf
-# - data/models/qwen3-4b/model.gguf  
-# - data/models/gpt-oss-20b/model.gguf
-```
+### Running (via Makefile)
 
-### Running
+All operations use the Makefile for consistency. Models auto-download on first use:
 
 **Start individual models:**
 ```bash
-make start WORKER=gemma3-270m    # Fast lightweight model
-make start WORKER=qwen3-4b       # Balanced performance
-make start WORKER=gpt-oss-20b    # Large high-quality model
+make start WORKER=gemma3-270m    # Fast 235MB model (auto-downloads)
+make start WORKER=qwen3-4b       # Balanced 2.3GB model (auto-downloads)
+make start WORKER=gpt-oss-20b    # Large 20GB model (auto-downloads)
 ```
 
 **Or use shortcuts:**
 ```bash
-make gemma3-270m    # Start Gemma
-make qwen3-4b       # Start Qwen
-make gpt-oss-20b    # Start GPT-OSS
+make gemma3-270m    # Same as: make start WORKER=gemma3-270m
+make qwen3-4b       # Same as: make start WORKER=qwen3-4b  
+make gpt-oss-20b    # Same as: make start WORKER=gpt-oss-20b
 ```
+
+**First run:** Models download automatically with progress logging
+**Subsequent runs:** Start immediately (models cached locally)
 
 ## 🔧 Usage
 
@@ -186,26 +184,41 @@ curl -X POST http://localhost:5770/v1/completions \
   }'
 ```
 
-## 🎯 Management Commands
+## 🎯 Makefile Commands
 
+All operations are managed through the Makefile for consistency and ease of use:
+
+### Build Commands
 ```bash
-# Build commands
 make build-llama         # Build llama.cpp with auto-detected GPU
 make build              # Build inference server
 make build-cli          # Build NATS CLI client
 make build-all          # Build everything
+```
 
-# Model management
+### Model Management
+```bash
 make list-workers       # Show available model configurations
-make start WORKER=name  # Start specific model
+make start WORKER=name  # Start specific model (auto-downloads if missing)
 make stop WORKER=name   # Stop specific model  
 make stop              # Stop all models
-
-# Testing and logs
-make test WORKER=name   # Test model endpoints
-make logs WORKER=name   # View request logs
-make help              # Show all commands
 ```
+
+### Testing and Monitoring
+```bash
+make test WORKER=name   # Test model endpoints
+make logs WORKER=name   # View request logs from SQLite
+make help              # Show all available commands
+```
+
+### Shortcuts (equivalent to make start WORKER=name)
+```bash
+make gemma3-270m        # Start Gemma3-270M
+make qwen3-4b          # Start Qwen3-4B  
+make gpt-oss-20b       # Start GPT-OSS-20B
+```
+
+**Note**: Models are automatically downloaded with progress indication on first use.
 
 ## 📊 Monitoring & Observability
 
