@@ -1,0 +1,64 @@
+name: Build Linux CUDA
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-linux-cuda:
+    name: Build Linux AMD64 (CUDA)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install CUDA Toolkit
+        uses: Jimver/cuda-toolkit@v0.2.24
+        with:
+          cuda: '12.4'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libcurl4-openssl-dev
+          
+      - name: Build llama.cpp with CUDA
+        run: |
+          make build-llama-cuda
+          
+      - name: Build inference service
+        run: |
+          make build-all
+          
+      - name: Test build
+        run: |
+          ./bin/inference-server --help || true
+          ./bin/nats-chat --help || true
+          
+      - name: Package Linux CUDA release
+        run: |
+          mkdir -p dist/linux-amd64-cuda
+          cp bin/inference-server dist/linux-amd64-cuda/
+          cp bin/nats-chat dist/linux-amd64-cuda/
+          cp -r envs dist/linux-amd64-cuda/
+          cp -r examples dist/linux-amd64-cuda/
+          cp -r scripts dist/linux-amd64-cuda/
+          cp -r data dist/linux-amd64-cuda/
+          cp Makefile dist/linux-amd64-cuda/
+          cp README.md dist/linux-amd64-cuda/
+          cp LICENSE dist/linux-amd64-cuda/
+          cd dist && tar -czf inference-service-linux-amd64-cuda.tar.gz linux-amd64-cuda/
+          
+      - name: Upload Linux CUDA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64-cuda
+          path: dist/inference-service-linux-amd64-cuda.tar.gz

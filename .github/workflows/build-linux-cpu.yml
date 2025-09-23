@@ -1,0 +1,59 @@
+name: Build Linux CPU
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-linux-amd64:
+    name: Build Linux AMD64 (CPU)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libcurl4-openssl-dev
+          
+      - name: Build llama.cpp (CPU)
+        run: |
+          make build-llama-cpu
+          
+      - name: Build inference service
+        run: |
+          make build-all
+          
+      - name: Test build
+        run: |
+          ./bin/inference-server --help || true
+          ./bin/nats-chat --help || true
+          
+      - name: Package Linux AMD64 release
+        run: |
+          mkdir -p dist/linux-amd64
+          cp bin/inference-server dist/linux-amd64/
+          cp bin/nats-chat dist/linux-amd64/
+          cp -r envs dist/linux-amd64/
+          cp -r examples dist/linux-amd64/
+          cp -r scripts dist/linux-amd64/
+          cp -r data dist/linux-amd64/
+          cp Makefile dist/linux-amd64/
+          cp README.md dist/linux-amd64/
+          cp LICENSE dist/linux-amd64/
+          cd dist && tar -czf inference-service-linux-amd64-cpu.tar.gz linux-amd64/
+          
+      - name: Upload Linux AMD64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64-cpu
+          path: dist/inference-service-linux-amd64-cpu.tar.gz

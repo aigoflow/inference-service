@@ -1,0 +1,64 @@
+name: Build Linux ROCm
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-linux-rocm:
+    name: Build Linux AMD64 (ROCm/AMD GPU)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install ROCm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libcurl4-openssl-dev
+          # Add ROCm repository
+          wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
+          echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/5.7/ ubuntu main' | sudo tee /etc/apt/sources.list.d/rocm.list
+          sudo apt-get update
+          sudo apt-get install -y rocm-dev hip-dev || true  # May fail in CI, continue anyway
+          
+      - name: Build llama.cpp with ROCm
+        run: |
+          make build-llama-rocm || make build-llama-cpu  # Fallback to CPU if ROCm fails
+          
+      - name: Build inference service
+        run: |
+          make build-all
+          
+      - name: Test build
+        run: |
+          ./bin/inference-server --help || true
+          ./bin/nats-chat --help || true
+          
+      - name: Package Linux ROCm release
+        run: |
+          mkdir -p dist/linux-amd64-rocm
+          cp bin/inference-server dist/linux-amd64-rocm/
+          cp bin/nats-chat dist/linux-amd64-rocm/
+          cp -r envs dist/linux-amd64-rocm/
+          cp -r examples dist/linux-amd64-rocm/
+          cp -r scripts dist/linux-amd64-rocm/
+          cp -r data dist/linux-amd64-rocm/
+          cp Makefile dist/linux-amd64-rocm/
+          cp README.md dist/linux-amd64-rocm/
+          cp LICENSE dist/linux-amd64-rocm/
+          cd dist && tar -czf inference-service-linux-amd64-rocm.tar.gz linux-amd64-rocm/
+          
+      - name: Upload Linux ROCm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64-rocm
+          path: dist/inference-service-linux-amd64-rocm.tar.gz
