@@ -51,6 +51,7 @@ func (r *SQLiteRequestRepository) LogRequest(ctx context.Context, req *models.Re
 		req.Timestamp,
 		req.TraceID,
 		req.ReqID,
+		req.WorkerID,
 		req.Source,
 		req.ReplyTo,
 		req.RawInput,

@@ -4,7 +4,8 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:til.simonwillison.net)",
-      "Read(//Users/hannes/Development/agentfw/agent-server/**)"
+      "Read(//Users/hannes/Development/agentfw/agent-server/**)",
+      "Bash(sqlite3:*)"
     ],
     "deny": [],
     "ask": []

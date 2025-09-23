@@ -51,7 +51,7 @@ func (h *InferenceHandler) handleCompletions(w http.ResponseWriter, r *http.Requ
 		httpReq.TraceID = traceID
 	}
 	
-	response, err := h.inferenceService.ProcessInference(r.Context(), httpReq, "http.inference", "direct")
+	response, err := h.inferenceService.ProcessInference(r.Context(), httpReq, "http.inference", "direct", "http-worker")
 	
 	resp := map[string]interface{}{
 		"req_id":     response.ReqID,

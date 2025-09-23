@@ -211,8 +211,8 @@ func sendInferenceRequest(nc *nats.Conn, subject, input string, maxTokens int, t
 	// Create temporary reply subject
 	replySubject := fmt.Sprintf("reply.%d", time.Now().UnixNano())
 	
-	// Prepare request
-	reqID := fmt.Sprintf("cli-%d", time.Now().UnixNano())
+	// Prepare request with unique ID
+	reqID := fmt.Sprintf("cli-%d-%d", time.Now().UnixNano(), os.Getpid())
 	
 	params := map[string]interface{}{
 		"temperature": temperature,

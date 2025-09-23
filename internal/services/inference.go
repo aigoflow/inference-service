@@ -44,7 +44,7 @@ func NewInferenceService(llm *llama.Model, repo repository.Repository, grammarSe
 	}
 }
 
-func (s *InferenceService) ProcessInference(ctx context.Context, req InferenceRequest, source string, replyTo string) (response *InferenceResponse, err error) {
+func (s *InferenceService) ProcessInference(ctx context.Context, req InferenceRequest, source string, replyTo string, workerID string) (response *InferenceResponse, err error) {
 	start := time.Now()
 	
 	// Add service-level crash recovery
@@ -64,6 +64,7 @@ func (s *InferenceService) ProcessInference(ctx context.Context, req InferenceRe
 				Timestamp:      start,
 				TraceID:        traceID,
 				ReqID:          req.ReqID,
+				WorkerID:       workerID,
 				Source:         source,
 				ReplyTo:        replyTo,
 				RawInput:       req.Input,
@@ -135,6 +136,7 @@ func (s *InferenceService) ProcessInference(ctx context.Context, req InferenceRe
 		Timestamp:      start,
 		TraceID:        traceID,
 		ReqID:          req.ReqID,
+		WorkerID:       workerID,
 		Source:         source,
 		ReplyTo:        replyTo,
 		RawInput:       req.Input,

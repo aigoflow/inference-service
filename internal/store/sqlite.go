@@ -36,6 +36,7 @@ func Open(path string) (*DB, error) {
 		ts REAL,
 		trace_id TEXT,
 		req_id TEXT,
+		worker_id TEXT,
 		source TEXT,
 		reply_to TEXT,
 		raw_input TEXT,
@@ -66,10 +67,10 @@ func (db *DB) Event(level, code, msg string, meta map[string]interface{}) {
 		float64(time.Now().UnixNano())/1e9, level, code, msg, m)
 }
 
-func (db *DB) Req(start time.Time, traceID, reqID, source, replyTo, rawInput, formattedInput, responseText, params, grammarUsed string,
+func (db *DB) Req(start time.Time, traceID, reqID, workerID, source, replyTo, rawInput, formattedInput, responseText, params, grammarUsed string,
 	tokIn, tokOut int, dur time.Duration, status, errStr string) {
 	_, _ = db.Exec(`INSERT INTO requests(
-		ts, trace_id, req_id, source, reply_to, raw_input, formatted_input, input_len, params_json, grammar_used, response_text, tokens_in, tokens_out, dur_ms, status, error)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		float64(start.UnixNano())/1e9, traceID, reqID, source, replyTo, rawInput, formattedInput, len(rawInput), params, grammarUsed, responseText, tokIn, tokOut, float64(dur.Milliseconds()), status, errStr)
+		ts, trace_id, req_id, worker_id, source, reply_to, raw_input, formatted_input, input_len, params_json, grammar_used, response_text, tokens_in, tokens_out, dur_ms, status, error)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		float64(start.UnixNano())/1e9, traceID, reqID, workerID, source, replyTo, rawInput, formattedInput, len(rawInput), params, grammarUsed, responseText, tokIn, tokOut, float64(dur.Milliseconds()), status, errStr)
 }

@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,6 +12,16 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/aigoflow/inference-service/internal/config"
 )
+
+// generateWorkerID creates a unique worker ID using timestamp and random bytes
+func generateWorkerID() string {
+	// Use timestamp + random bytes for uniqueness
+	timestamp := time.Now().UnixNano()
+	randomBytes := make([]byte, 4)
+	rand.Read(randomBytes)
+	randomHex := hex.EncodeToString(randomBytes)
+	return fmt.Sprintf("worker-%d-%s", timestamp, randomHex)
+}
 
 type NATSService struct {
 	conn             *nats.Conn
@@ -60,9 +72,10 @@ func (s *NATSService) Start(ctx context.Context) error {
 		"consumer", s.cfg.Durable,
 		"concurrency", s.cfg.Concurrency)
 
-	// Start workers
+	// Start workers with unique IDs
 	for i := 0; i < s.cfg.Concurrency; i++ {
-		go s.worker(ctx, consumer, i)
+		workerID := generateWorkerID()
+		go s.worker(ctx, consumer, workerID)
 	}
 
 	// Block until context is cancelled
@@ -132,7 +145,7 @@ func (s *NATSService) createConsumer() (*nats.Subscription, error) {
 	return sub, nil
 }
 
-func (s *NATSService) worker(ctx context.Context, consumer *nats.Subscription, workerID int) {
+func (s *NATSService) worker(ctx context.Context, consumer *nats.Subscription, workerID string) {
 	slog.Info("NATS worker starting", "worker_id", workerID)
 	
 	for {
@@ -159,7 +172,7 @@ func (s *NATSService) worker(ctx context.Context, consumer *nats.Subscription, w
 	}
 }
 
-func (s *NATSService) processMessage(ctx context.Context, msg *nats.Msg, workerID int) {
+func (s *NATSService) processMessage(ctx context.Context, msg *nats.Msg, workerID string) {
 	start := time.Now()
 	
 	// Parse inference request
@@ -190,6 +203,7 @@ func (s *NATSService) processMessage(ctx context.Context, msg *nats.Msg, workerI
 		req, 
 		fmt.Sprintf("nats.%s", msg.Subject), 
 		req.ReplyTo, // Use reply_to from message payload, not msg.Reply
+		workerID,
 	)
 
 	// Prepare response

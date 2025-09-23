@@ -59,7 +59,7 @@ jobs:
 
   build-linux-amd64:
     name: Build Linux AMD64 (CPU)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,8 +72,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake libcurl4-openssl-dev
+          sudo apt-get update && sudo apt-get upgrade -y
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            pkg-config \
+            curl \
+            wget \
+            ca-certificates
           
       - name: Build llama.cpp (CPU)
         run: |
@@ -110,7 +118,7 @@ jobs:
 
   build-linux-cuda:
     name: Build Linux AMD64 (CUDA)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,8 +136,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake libcurl4-openssl-dev
+          sudo apt-get update && sudo apt-get upgrade -y
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            pkg-config \
+            curl \
+            wget \
+            ca-certificates
           
       - name: Build llama.cpp with CUDA
         run: |
@@ -166,7 +182,7 @@ jobs:
 
   build-linux-rocm:
     name: Build Linux AMD64 (ROCm/AMD GPU)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -179,8 +195,16 @@ jobs:
 
       - name: Install ROCm
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake libcurl4-openssl-dev
+          sudo apt-get update && sudo apt-get upgrade -y
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            pkg-config \
+            curl \
+            wget \
+            ca-certificates
           # Add ROCm repository
           wget -q -O - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
           echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/5.7/ ubuntu main' | sudo tee /etc/apt/sources.list.d/rocm.list
@@ -223,7 +247,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [build-macos-metal, build-linux-amd64, build-linux-cuda, build-linux-rocm]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4

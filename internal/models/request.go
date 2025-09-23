@@ -7,6 +7,7 @@ type RequestLog struct {
 	Timestamp      time.Time `json:"ts"`
 	TraceID        string    `json:"trace_id"`
 	ReqID          string    `json:"req_id"`
+	WorkerID       string    `json:"worker_id"`
 	Source         string    `json:"source"`
 	ReplyTo        string    `json:"reply_to"`
 	RawInput       string    `json:"raw_input"`
