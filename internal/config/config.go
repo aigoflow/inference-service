@@ -43,6 +43,10 @@ type Config struct {
 	
 	// Database Configuration
 	DBPath string
+	
+	// Monitoring Configuration
+	MonitoringTopic       string
+	BackpressureThreshold int
 }
 
 func Load(envFile string) (*Config, error) {
@@ -55,7 +59,7 @@ func Load(envFile string) (*Config, error) {
 	}
 
 	return &Config{
-		NatsURL:        getEnv("NATS_URL", "nats://127.0.0.1:4222"),
+		NatsURL:        getEnv("NATS_URL", "nats://127.0.0.1:5700"),
 		Stream:         getEnv("STREAM_NAME", "INFER"),
 		Subject:        getEnv("SUBJECT", "inference.request.default"),
 		Durable:        getEnv("QUEUE_DURABLE", "infer-wq"),
@@ -79,6 +83,10 @@ func Load(envFile string) (*Config, error) {
 		FormatConfig:   loadFormatConfig(),
 		DataDir:        getEnv("DATA_DIR", "data"),
 		DBPath:         getEnv("DB_PATH", "data/worker.sqlite"),
+		
+		// Monitoring Configuration
+		MonitoringTopic:       getEnv("MONITORING_TOPIC", "monitoring.inference"),
+		BackpressureThreshold: getEnvInt("BACKPRESSURE_THRESHOLD", 5),
 	}, nil
 }
 

@@ -65,7 +65,7 @@ func startSpinner(ctx context.Context, message string) *sync.WaitGroup {
 
 func main() {
 	var (
-		natsURL     = flag.String("url", "nats://127.0.0.1:4222", "NATS server URL")
+		natsURL     = flag.String("url", "nats://127.0.0.1:5700", "NATS server URL")
 		subject     = flag.String("subject", "inference.request.gemma3-270m", "NATS subject to publish to")
 		input       = flag.String("input", "", "Text input for inference (one-shot mode)")
 		maxTokens   = flag.Int("max-tokens", -1, "Maximum tokens to generate (-1 for maximum possible)")
