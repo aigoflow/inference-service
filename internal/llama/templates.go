@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	
+	"github.com/aigoflow/inference-service/internal/harmony"
 )
 
 type PromptTemplate struct {
@@ -42,7 +44,23 @@ func loadTemplate(modelDir string) (*PromptTemplate, error) {
 }
 
 func formatPromptForModel(input, modelPath string) string {
-	// Extract model directory from model path
+	// Check if this is a GPT-OSS model that needs Harmony format
+	if harmony.IsGPTOSSModel(modelPath) {
+		slog.Info("Using Harmony format for GPT-OSS model", "model_path", modelPath)
+		
+		// Extract system prompt from template if available
+		modelDir := filepath.Dir(modelPath)
+		template, err := loadTemplate(modelDir)
+		if err == nil && template != nil && template.SystemRole != "" {
+			// Use system prompt with Harmony format
+			return harmony.FormatPromptForGPTOSSWithSystem(input, template.SystemRole, modelPath)
+		}
+		
+		// Use simple Harmony format without system prompt
+		return harmony.FormatPromptForGPTOSS(input, modelPath)
+	}
+	
+	// For non-GPT-OSS models, use existing template system
 	modelDir := filepath.Dir(modelPath)
 	template, err := loadTemplate(modelDir)
 	if err != nil {

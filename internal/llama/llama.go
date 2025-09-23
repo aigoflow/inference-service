@@ -19,6 +19,9 @@ import (
 	"runtime"
 	"time"
 	"unsafe"
+	
+	"github.com/aigoflow/inference-service/internal/config"
+	"github.com/aigoflow/inference-service/internal/harmony"
 )
 
 // Config holds the configuration for the llama model
@@ -30,12 +33,13 @@ type Config struct {
 }
 
 type Model struct {
-	model  unsafe.Pointer
-	config Config
+	model      unsafe.Pointer
+	config     Config
+	sysConfig  *config.Config  // System configuration with Harmony settings
 	// Remove ctx - we'll create fresh context for each request
 }
 
-func Load(cfg Config) (*Model, error) {
+func LoadWithConfig(cfg Config, sysConfig *config.Config) (*Model, error) {
 	modelPath := C.CString(cfg.ModelPath)
 	defer C.free(unsafe.Pointer(modelPath))
 	
@@ -61,12 +65,18 @@ func Load(cfg Config) (*Model, error) {
 	
 	// Set finalizer to clean up resources  
 	m := &Model{
-		model:  model,
-		config: cfg,
+		model:     model,
+		config:    cfg,
+		sysConfig: sysConfig,
 	}
 	runtime.SetFinalizer(m, (*Model).cleanup)
 	
 	return m, nil
+}
+
+// Load provides backward compatibility
+func Load(cfg Config) (*Model, error) {
+	return LoadWithConfig(cfg, nil)
 }
 
 func (m *Model) GenerateWithFormatting(input string, params map[string]interface{}) (text string, tokensIn, tokensOut int, formattedInput string, err error) {
@@ -88,8 +98,8 @@ func (m *Model) GenerateWithFormatting(input string, params map[string]interface
 	}
 	defer C.free_context(ctx)
 	
-	// Apply model-specific prompt formatting
-	formattedInput = formatPromptForModel(input, m.config.ModelPath)
+	// Apply model-specific prompt formatting using clean formatter system
+	formattedInput = FormatPromptWithConfig(input, m.config.ModelPath, m.sysConfig)
 	
 	// Extract generation parameters
 	maxTokens := getIntParam(params, "max_tokens", 512)
@@ -132,6 +142,10 @@ func (m *Model) GenerateWithFormatting(input string, params map[string]interface
 	}
 	
 	text = C.GoString((*C.char)(unsafe.Pointer(&result[0])))
+	
+	// Post-process response using clean formatter system
+	text = ParseResponseWithConfig(text, m.config.ModelPath, m.sysConfig)
+	
 	return text, tokensIn, tokensOut, formattedInput, nil
 }
 
@@ -153,8 +167,8 @@ func hasGPUSupport() bool {
 	return bool(C.has_gpu_support())
 }
 
-// LoadWithAutoDownload loads a model, downloading it if missing
-func LoadWithAutoDownload(modelPath, modelURL string, cfg Config) (*Model, error) {
+// LoadWithAutoDownload loads a model with system config, downloading if missing
+func LoadWithAutoDownload(modelPath, modelURL string, cfg Config, sysConfig *config.Config) (*Model, error) {
 	// Check if model exists
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		if modelURL == "" {
@@ -176,8 +190,8 @@ func LoadWithAutoDownload(modelPath, modelURL string, cfg Config) (*Model, error
 		slog.Info("Model downloaded successfully", "path", modelPath)
 	}
 	
-	// Load the model normally
-	return Load(cfg)
+	// Load the model with system configuration
+	return LoadWithConfig(cfg, sysConfig)
 }
 
 // downloadFile downloads a file from URL to local path with progress logging
@@ -328,4 +342,14 @@ func getStringParam(params map[string]interface{}, key string, defaultVal string
 		}
 	}
 	return defaultVal
+}
+
+// isGPTOSSModel checks if a model path indicates a GPT-OSS model
+func isGPTOSSModel(modelPath string) bool {
+	return harmony.IsGPTOSSModel(modelPath)
+}
+
+// extractFinalResponse extracts the main response from GPT-OSS Harmony output
+func extractFinalResponse(response string) string {
+	return harmony.ExtractFinalResponse(response)
 }

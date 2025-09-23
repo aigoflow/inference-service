@@ -5,7 +5,11 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:til.simonwillison.net)",
       "Read(//Users/hannes/Development/agentfw/agent-server/**)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(./test-parallel.sh)",
+      "Bash(curl:*)",
+      "Bash(go test:*)",
+      "Bash(make:*)"
     ],
     "deny": [],
     "ask": []

@@ -62,13 +62,13 @@ func main() {
 		"ctx_size":   cfg.CtxSize,
 	})
 
-	// Load model (with auto-download if missing)
+	// Load model with system configuration (with auto-download if missing)
 	llm, err := llama.LoadWithAutoDownload(cfg.ModelPath, cfg.ModelURL, llama.Config{
 		ModelPath: cfg.ModelPath,
 		ModelName: cfg.ModelName,
 		Threads:   cfg.Threads,
 		CtxSize:   cfg.CtxSize,
-	})
+	}, cfg)
 	if err != nil {
 		// Log model loading failure
 		db.Event("error", "model.failed", "Model loading failed", map[string]interface{}{

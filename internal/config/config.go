@@ -28,11 +28,15 @@ type Config struct {
 	HTTPAddr string
 	
 	// Model Configuration
-	ModelName string
-	ModelURL  string
-	ModelPath string
-	Threads   int
-	CtxSize   int
+	ModelName      string
+	ModelURL       string
+	ModelPath      string
+	ModelFormat    string  // "standard", "harmony", "chatml", etc.
+	Threads        int
+	CtxSize        int
+	
+	// Format-Specific Configuration
+	FormatConfig map[string]interface{}
 	
 	// Data Directory Configuration
 	DataDir string
@@ -67,8 +71,12 @@ func Load(envFile string) (*Config, error) {
 		ModelName:      getEnv("MODEL_NAME", "default"),
 		ModelURL:       getEnv("MODEL_URL", ""),
 		ModelPath:      getEnv("MODEL_PATH", "data/models/model.gguf"),
+		ModelFormat:    getEnv("MODEL_FORMAT", "standard"),
 		Threads:        getEnvInt("MODEL_THREADS", 8),
 		CtxSize:        getEnvInt("CTX_SIZE", 4096),
+		
+		// Format-Specific Configuration
+		FormatConfig:   loadFormatConfig(),
 		DataDir:        getEnv("DATA_DIR", "data"),
 		DBPath:         getEnv("DB_PATH", "data/worker.sqlite"),
 	}, nil
@@ -121,4 +129,32 @@ func getEnvDuration(key, defaultVal string) time.Duration {
 	}
 	d, _ := time.ParseDuration(defaultVal)
 	return d
+}
+
+func getEnvBool(key string, defaultVal bool) bool {
+	if val := os.Getenv(key); val != "" {
+		return val == "true" || val == "1" || val == "yes"
+	}
+	return defaultVal
+}
+
+func loadFormatConfig() map[string]interface{} {
+	config := make(map[string]interface{})
+	
+	// Harmony format configuration
+	if getEnv("MODEL_FORMAT", "standard") == "harmony" {
+		config["reasoning_level"] = getEnv("HARMONY_REASONING_LEVEL", "medium")
+		config["extract_final"] = getEnvBool("HARMONY_EXTRACT_FINAL", true)
+		config["model_identity"] = getEnv("HARMONY_MODEL_IDENTITY", "ChatGPT, a large language model trained by OpenAI")
+		config["knowledge_cutoff"] = getEnv("HARMONY_KNOWLEDGE_CUTOFF", "2024-06")
+	}
+	
+	// ChatML format configuration (example for extensibility)
+	if getEnv("MODEL_FORMAT", "standard") == "chatml" {
+		config["system_role"] = getEnv("CHATML_SYSTEM_ROLE", "system")
+		config["user_role"] = getEnv("CHATML_USER_ROLE", "user")
+		config["assistant_role"] = getEnv("CHATML_ASSISTANT_ROLE", "assistant")
+	}
+	
+	return config
 }
