@@ -1,0 +1,65 @@
+# Binaries  
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Model files (large binaries) - exclude .gguf files but keep directory structure and templates
+data/models/*/*.gguf
+data/models/*.gguf
+
+# Keep model directories and prompt templates
+!data/models/*/
+!data/models/*/prompt_template.json
+
+# Log databases (contain runtime data) - exclude logs but keep directory structure  
+data/logs/*.sqlite
+data/logs/*.db
+
+# Keep data/grammars/ directory structure
+!data/grammars/
+!data/grammars/.gitkeep
+
+# llama.cpp build artifacts
+llama.cpp/
+internal/llama/libllama.a
+internal/llama/libggml.a  
+internal/llama/libbinding.a
+internal/llama/binding.o
+internal/llama/include/
+internal/llama/src/
+internal/llama/ggml_include/
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Environment files with secrets (if any)
+.env.local
+.env.secret
+
+# Build artifacts
+build/
+dist/

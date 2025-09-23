@@ -1,0 +1,7 @@
+{
+  "name": "Qwen3-ChatML",
+  "user_prefix": "<|im_start|>user\n",
+  "user_suffix": "<|im_end|>\n",
+  "model_prefix": "<|im_start|>assistant\n", 
+  "model_suffix": "<|im_end|>"
+}

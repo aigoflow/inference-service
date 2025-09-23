@@ -1,0 +1,7 @@
+{
+  "name": "Gemma-3",
+  "user_prefix": "<start_of_turn>user\n",
+  "user_suffix": "<end_of_turn>\n",
+  "model_prefix": "<start_of_turn>model\n",
+  "model_suffix": "<end_of_turn>"
+}

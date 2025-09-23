@@ -1,0 +1,7 @@
+{
+  "name": "GPT-OSS-OpenAI",
+  "user_prefix": "User: ",
+  "user_suffix": "\n",
+  "model_prefix": "Assistant: ",
+  "model_suffix": ""
+}
