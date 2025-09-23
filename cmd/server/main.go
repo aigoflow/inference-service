@@ -105,9 +105,12 @@ func main() {
 		slog.Error("Failed to create NATS service", "error", err)
 		os.Exit(1)
 	}
+	
+	// Initialize Health service for model discovery
+	healthService := services.NewHealthService(natsService.GetConnection(), cfg)
 
 	// Start HTTP server
-	httpServer := server.NewServer(cfg.HTTPAddr, inferenceService, grammarService)
+	httpServer := server.NewServer(cfg.HTTPAddr, inferenceService, grammarService, llm)
 	
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -119,7 +122,7 @@ func main() {
 		"nats_url":   cfg.NatsURL,
 	})
 
-	// Start both services
+	// Start all services
 	go func() {
 		if err := httpServer.Start(ctx); err != nil {
 			db.Event("error", "http.failed", "HTTP server failed", map[string]interface{}{
@@ -135,6 +138,15 @@ func main() {
 				"error": err.Error(),
 			})
 			slog.Error("NATS service failed", "error", err)
+		}
+	}()
+	
+	go func() {
+		if err := healthService.Start(ctx); err != nil {
+			db.Event("error", "health.failed", "Health service failed", map[string]interface{}{
+				"error": err.Error(),
+			})
+			slog.Error("Health service failed", "error", err)
 		}
 	}()
 

@@ -16,6 +16,16 @@ void* load_model(const char *fname, int n_ctx, int n_threads, int n_gpu_layers, 
     return (void*)model;
 }
 
+void* load_embedding_model(const char *fname, int n_ctx, int n_threads, int n_gpu_layers, bool use_mmap, bool use_mlock) {
+    llama_model_params model_params = llama_model_default_params();
+    model_params.n_gpu_layers = n_gpu_layers;
+    model_params.use_mmap = use_mmap;
+    model_params.use_mlock = use_mlock;
+    
+    llama_model* model = llama_model_load_from_file(fname, model_params);
+    return (void*)model;
+}
+
 void free_model(void* model) {
     if (model) {
         llama_model_free((llama_model*)model);
@@ -28,6 +38,23 @@ void* new_context(void* model, int n_ctx, int n_threads) {
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = n_ctx > 0 ? n_ctx : 4096;
     ctx_params.n_threads = n_threads > 0 ? n_threads : 8;
+    
+    llama_context* ctx = llama_init_from_model((llama_model*)model, ctx_params);
+    return (void*)ctx;
+}
+
+void* new_embedding_context(void* model, int n_ctx, int n_threads) {
+    if (!model) return nullptr;
+    
+    llama_context_params ctx_params = llama_context_default_params();
+    ctx_params.n_ctx = n_ctx > 0 ? n_ctx : 4096;
+    ctx_params.n_threads = n_threads > 0 ? n_threads : 8;
+    ctx_params.pooling_type = LLAMA_POOLING_TYPE_MEAN;  // Enable pooling for embeddings
+    
+    // Critical settings for embedding models (copied from working example)
+    ctx_params.n_batch = ctx_params.n_ctx;    // Set batch size to context size
+    ctx_params.n_ubatch = ctx_params.n_batch; // For non-causal models
+    ctx_params.embeddings = true;             // Enable embeddings
     
     llama_context* ctx = llama_init_from_model((llama_model*)model, ctx_params);
     return (void*)ctx;
@@ -257,6 +284,73 @@ bool has_gpu_support() {
 #else
     return false;
 #endif
+}
+
+int llama_embedding(void* ctx, const char* text, float* embeddings, int max_embeddings) {
+    if (!ctx || !text || !embeddings) return -1;
+    
+    llama_context* context = (llama_context*)ctx;
+    const llama_model* model = llama_get_model(context);
+    const llama_vocab* vocab = llama_model_get_vocab(model);
+    
+    // Tokenize input text
+    const int n_tokens = -llama_tokenize(vocab, text, strlen(text), NULL, 0, true, true);
+    if (n_tokens <= 0) return -1;
+    
+    std::vector<llama_token> tokens(n_tokens);
+    llama_tokenize(vocab, text, strlen(text), tokens.data(), tokens.size(), true, true);
+    
+    // Create batch for embedding with proper setup
+    llama_batch batch = llama_batch_init(tokens.size(), 0, 1);
+    
+    // Add tokens to batch with seq_id = 0 and enable logits for embedding extraction
+    for (size_t i = 0; i < tokens.size(); i++) {
+        batch.token[i] = tokens[i];
+        batch.pos[i] = i;
+        batch.n_seq_id[i] = 1;
+        batch.seq_id[i][0] = 0;  // sequence ID 0
+        batch.logits[i] = true;  // Enable logits for embedding
+    }
+    batch.n_tokens = tokens.size();
+    
+    // Clear previous kv_cache values (irrelevant for embeddings)
+    llama_memory_clear(llama_get_memory(context), true);
+    
+    // Process tokens for embedding (use decode for embeddings)
+    if (llama_decode(context, batch) < 0) {
+        llama_batch_free(batch);
+        return -1; // Failed to decode
+    }
+    
+    // Get embeddings from the model
+    int n_embd = llama_model_n_embd(model);
+    if (n_embd > max_embeddings) {
+        n_embd = max_embeddings;
+    }
+    
+    // Get sequence embeddings (pooled) - more appropriate for text embeddings
+    const float* model_embeddings = llama_get_embeddings_seq(context, 0);
+    if (!model_embeddings) {
+        // Fallback to token embeddings from last token
+        model_embeddings = llama_get_embeddings_ith(context, tokens.size() - 1);
+    }
+    
+    if (!model_embeddings) {
+        llama_batch_free(batch);
+        return -1; // No embeddings available
+    }
+    
+    // Copy embeddings to output buffer
+    memcpy(embeddings, model_embeddings, n_embd * sizeof(float));
+    
+    llama_batch_free(batch);
+    
+    return n_embd;
+}
+
+int get_embedding_size(void* model) {
+    if (!model) return 0;
+    return llama_model_n_embd((llama_model*)model);
 }
 
 } // extern "C"

@@ -9,10 +9,12 @@ extern "C" {
 
 // Model management
 void* load_model(const char *fname, int n_ctx, int n_threads, int n_gpu_layers, bool use_mmap, bool use_mlock);
+void* load_embedding_model(const char *fname, int n_ctx, int n_threads, int n_gpu_layers, bool use_mmap, bool use_mlock);
 void free_model(void* model);
 
 // Context management  
 void* new_context(void* model, int n_ctx, int n_threads);
+void* new_embedding_context(void* model, int n_ctx, int n_threads);
 void free_context(void* ctx);
 void clear_context(void* ctx);
 
@@ -33,6 +35,10 @@ int get_context_size(void* model);
 
 // GPU/Metal detection
 bool has_gpu_support();
+
+// Embedding generation
+int llama_embedding(void* ctx, const char* text, float* embeddings, int max_embeddings);
+int get_embedding_size(void* model);
 
 #ifdef __cplusplus
 }

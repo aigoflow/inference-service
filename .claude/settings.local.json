@@ -9,7 +9,13 @@
       "Bash(./test-parallel.sh)",
       "Bash(curl:*)",
       "Bash(go test:*)",
-      "Bash(make:*)"
+      "Bash(make:*)",
+      "Read(//Users/hannes/Development/agentfw/architecture-docs/**)",
+      "Read(//Users/hannes/Development/agentfw/**)",
+      "Bash(docker-compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(go mod:*)",
+      "Bash(SESSION_ID=\"session-dd0geuoghrgo\")"
     ],
     "deny": [],
     "ask": []

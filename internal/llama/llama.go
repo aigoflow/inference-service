@@ -56,7 +56,15 @@ func LoadWithConfig(cfg Config, sysConfig *config.Config) (*Model, error) {
 		"gpu_layers", gpuLayers,
 		"gpu_support", hasGPUSupport())
 	
-	model := C.load_model(modelPath, C.int(cfg.CtxSize), C.int(cfg.Threads), C.int(gpuLayers), C.bool(true), C.bool(false))
+	// Choose appropriate loader based on model format
+	var model unsafe.Pointer
+	if sysConfig != nil && sysConfig.ModelFormat == "embedding" {
+		slog.Info("Loading as embedding model")
+		model = C.load_embedding_model(modelPath, C.int(cfg.CtxSize), C.int(cfg.Threads), C.int(gpuLayers), C.bool(true), C.bool(false))
+	} else {
+		model = C.load_model(modelPath, C.int(cfg.CtxSize), C.int(cfg.Threads), C.int(gpuLayers), C.bool(true), C.bool(false))
+	}
+	
 	if model == nil {
 		return nil, fmt.Errorf("failed to load model: %s", cfg.ModelPath)
 	}
@@ -147,6 +155,146 @@ func (m *Model) GenerateWithFormatting(input string, params map[string]interface
 	text = ParseResponseWithConfig(text, m.config.ModelPath, m.sysConfig)
 	
 	return text, tokensIn, tokensOut, formattedInput, nil
+}
+
+// GenerateRaw generates text without any formatting (for reasoning service control)
+func (m *Model) GenerateRaw(input string, params map[string]interface{}) (text string, tokensIn, tokensOut int, formattedInput string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("Raw inference panic recovered", "error", r)
+			text, tokensIn, tokensOut, formattedInput, err = "", 0, 0, "", fmt.Errorf("raw inference panic: %v", r)
+		}
+	}()
+	
+	if m.model == nil {
+		return "", 0, 0, "", fmt.Errorf("model is nil")
+	}
+	
+	// Create fresh context per request for stateless operation
+	ctx := C.new_context(m.model, C.int(m.config.CtxSize), C.int(m.config.Threads))
+	if ctx == nil {
+		return "", 0, 0, "", fmt.Errorf("failed to create context")
+	}
+	defer C.free_context(ctx)
+	
+	// Use input directly without any formatting
+	formattedInput = input
+	
+	// Extract generation parameters
+	maxTokens := getIntParam(params, "max_tokens", 512)
+	temperature := getFloatParam(params, "temperature", 0.7)
+	topP := getFloatParam(params, "top_p", 1.0)
+	topK := getIntParam(params, "top_k", 40)
+	repeatPenalty := getFloatParam(params, "repeat_penalty", 1.1)
+	repeatLastN := getIntParam(params, "repeat_last_n", 64)
+	
+	// Natural stopping when max_tokens not specified
+	if _, exists := params["max_tokens"]; !exists {
+		maxTokens = 2048
+	}
+	
+	// Count input tokens using raw input
+	inputCStr := C.CString(formattedInput)
+	defer C.free(unsafe.Pointer(inputCStr))
+	tokensIn = int(C.count_tokens(ctx, inputCStr))
+	
+	// Generate tokens using proven stable prediction
+	resultSize := maxTokens * 4
+	result := make([]byte, resultSize)
+	
+	tokensOut = int(C.llama_predict(
+		ctx,
+		inputCStr,
+		(*C.char)(unsafe.Pointer(&result[0])),
+		C.int(resultSize),
+		C.int(maxTokens),
+		C.float(temperature),
+		C.float(topP),
+		C.int(topK),
+		C.float(repeatPenalty),
+		C.int(repeatLastN),
+		C.bool(true),
+	))
+	
+	if tokensOut < 0 {
+		return "", tokensIn, 0, formattedInput, fmt.Errorf("raw inference failed")
+	}
+	
+	text = C.GoString((*C.char)(unsafe.Pointer(&result[0])))
+	
+	// No post-processing in raw mode - return exactly what model generated
+	return text, tokensIn, tokensOut, formattedInput, nil
+}
+
+// GenerateEmbedding generates embedding vectors for input text
+func (m *Model) GenerateEmbedding(input string) ([]float32, int, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("Embedding generation panic recovered", "error", r)
+		}
+	}()
+	
+	if m.model == nil {
+		return nil, 0, fmt.Errorf("model is nil")
+	}
+	
+	// Create fresh embedding context per request for stateless operation
+	ctx := C.new_embedding_context(m.model, C.int(m.config.CtxSize), C.int(m.config.Threads))
+	if ctx == nil {
+		return nil, 0, fmt.Errorf("failed to create context")
+	}
+	defer C.free_context(ctx)
+	
+	// Get embedding size from model
+	embeddingSize := int(C.get_embedding_size(m.model))
+	if embeddingSize <= 0 {
+		return nil, 0, fmt.Errorf("model does not support embeddings or invalid embedding size: %d", embeddingSize)
+	}
+	
+	// Prepare input string
+	inputCStr := C.CString(input)
+	defer C.free(unsafe.Pointer(inputCStr))
+	
+	// Allocate buffer for embeddings
+	embeddings := make([]float32, embeddingSize)
+	
+	// Generate embeddings
+	resultSize := int(C.llama_embedding(
+		ctx,
+		inputCStr,
+		(*C.float)(unsafe.Pointer(&embeddings[0])),
+		C.int(embeddingSize),
+	))
+	
+	if resultSize < 0 {
+		return nil, 0, fmt.Errorf("embedding generation failed")
+	}
+	
+	if resultSize != embeddingSize {
+		slog.Warn("Embedding size mismatch", "expected", embeddingSize, "actual", resultSize)
+		// Truncate or pad as needed
+		if resultSize < embeddingSize {
+			embeddings = embeddings[:resultSize]
+		}
+	}
+	
+	// Count input tokens for metrics
+	tokensIn := int(C.count_tokens(ctx, inputCStr))
+	
+	return embeddings, tokensIn, nil
+}
+
+// GetEmbeddingSize returns the embedding dimension size for this model
+func (m *Model) GetEmbeddingSize() int {
+	if m.model == nil {
+		return 0
+	}
+	return int(C.get_embedding_size(m.model))
+}
+
+// IsEmbeddingModel checks if this model supports embedding generation
+func (m *Model) IsEmbeddingModel() bool {
+	return m.GetEmbeddingSize() > 0
 }
 
 func truncateString(s string, maxLen int) string {

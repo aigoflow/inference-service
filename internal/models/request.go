@@ -18,7 +18,9 @@ type RequestLog struct {
 	GrammarUsed    string    `json:"grammar_used"`
 	TokensIn       int       `json:"tokens_in"`
 	TokensOut      int       `json:"tokens_out"`
-	DurationMs     float64   `json:"dur_ms"`
+	DurationMs     int64     `json:"dur_ms"`
 	Status         string    `json:"status"`
 	Error          string    `json:"error"`
+	EmbeddingSize  int       `json:"embedding_size,omitempty"`   // For embedding requests
+	EmbeddingCount int       `json:"embedding_count,omitempty"`  // Number of embeddings generated
 }

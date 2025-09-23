@@ -85,3 +85,8 @@ func (h *InferenceHandler) handleLogs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(logs)
 }
+
+// GetLogsHandler returns the logs handler function for reuse
+func (h *InferenceHandler) GetLogsHandler() http.HandlerFunc {
+	return h.handleLogs
+}

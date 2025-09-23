@@ -18,6 +18,7 @@ type InferenceRequest struct {
 	Input   string                 `json:"input"`
 	Params  map[string]interface{} `json:"params"`
 	ReplyTo string                 `json:"reply_to,omitempty"`
+	Raw     bool                   `json:"raw,omitempty"`     // Bypass all formatting
 }
 
 type InferenceResponse struct {
@@ -72,7 +73,7 @@ func (s *InferenceService) ProcessInference(ctx context.Context, req InferenceRe
 				ResponseText:   "[CRASHED]",
 				ParamsJSON:     toJSON(req.Params),
 				GrammarUsed:    "none",
-				DurationMs:     float64(duration.Milliseconds()),
+				DurationMs:     duration.Milliseconds(),
 				Status:         "panic",
 				Error:          errStr,
 			}
@@ -119,8 +120,19 @@ func (s *InferenceService) ProcessInference(ctx context.Context, req InferenceRe
 		}
 	}
 
-	// Generate inference using LLM (this will handle prompt formatting internally)
-	text, tokensIn, tokensOut, formattedInput, err := s.llm.GenerateWithFormatting(req.Input, req.Params)
+	// Generate inference - use raw mode if requested
+	var text string
+	var tokensIn, tokensOut int
+	var formattedInput string
+	
+	if req.Raw {
+		// Raw mode: pass input directly to model without any formatting
+		slog.Debug("Using raw mode - bypassing all formatting", "req_id", req.ReqID)
+		text, tokensIn, tokensOut, formattedInput, err = s.llm.GenerateRaw(req.Input, req.Params)
+	} else {
+		// Normal mode: use formatting system
+		text, tokensIn, tokensOut, formattedInput, err = s.llm.GenerateWithFormatting(req.Input, req.Params)
+	}
 	
 	duration := time.Since(start)
 	status := "ok"
@@ -147,7 +159,7 @@ func (s *InferenceService) ProcessInference(ctx context.Context, req InferenceRe
 		GrammarUsed:    grammarRef,
 		TokensIn:       tokensIn,
 		TokensOut:      tokensOut,
-		DurationMs:     float64(duration.Milliseconds()),
+		DurationMs:     duration.Milliseconds(),
 		Status:         status,
 		Error:          errStr,
 	}
@@ -197,4 +209,9 @@ func getStringParam(params map[string]interface{}, key string, defaultVal string
 // GetRequestLogs retrieves request logs through proper repository interface
 func (s *InferenceService) GetRequestLogs(ctx context.Context, limit int) ([]*models.RequestLog, error) {
 	return s.repo.Request().GetRequestLogs(ctx, limit)
+}
+
+// GetRepository returns the repository for use by other services
+func (s *InferenceService) GetRepository() repository.Repository {
+	return s.repo
 }

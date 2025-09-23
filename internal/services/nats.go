@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -27,7 +28,9 @@ type NATSService struct {
 	conn             *nats.Conn
 	js               nats.JetStreamContext
 	inferenceService *InferenceService
+	embeddingService *EmbeddingService
 	cfg              *config.Config
+	monitoring       *MonitoringService
 }
 
 func NewNATSService(cfg *config.Config, inferenceService *InferenceService) (*NATSService, error) {
@@ -49,6 +52,7 @@ func NewNATSService(cfg *config.Config, inferenceService *InferenceService) (*NA
 		js:               js,
 		inferenceService: inferenceService,
 		cfg:              cfg,
+		monitoring:       NewMonitoringService(conn, cfg),
 	}
 
 	return service, nil
@@ -72,6 +76,9 @@ func (s *NATSService) Start(ctx context.Context) error {
 		"consumer", s.cfg.Durable,
 		"concurrency", s.cfg.Concurrency)
 
+	// Start monitoring service
+	go s.monitoring.Start(ctx)
+	
 	// Start workers with unique IDs
 	for i := 0; i < s.cfg.Concurrency; i++ {
 		workerID := generateWorkerID()
@@ -166,13 +173,31 @@ func (s *NATSService) worker(ctx context.Context, consumer *nats.Subscription, w
 			}
 
 			for _, msg := range msgs {
+				// Track message processing
+				s.monitoring.IncrementPending()
 				s.processMessage(ctx, msg, workerID)
+				s.monitoring.DecrementPending()
 			}
 		}
 	}
 }
 
 func (s *NATSService) processMessage(ctx context.Context, msg *nats.Msg, workerID string) {
+	// Track active processing
+	s.monitoring.IncrementActive()
+	defer s.monitoring.DecrementActive()
+	
+	// Determine if this is an embedding or inference request based on subject
+	isEmbeddingRequest := strings.Contains(msg.Subject, "embedding.request")
+	
+	if isEmbeddingRequest {
+		s.processEmbeddingMessage(ctx, msg, workerID)
+	} else {
+		s.processInferenceMessage(ctx, msg, workerID)
+	}
+}
+
+func (s *NATSService) processInferenceMessage(ctx context.Context, msg *nats.Msg, workerID string) {
 	start := time.Now()
 	
 	// Parse inference request
@@ -255,9 +280,94 @@ func (s *NATSService) processMessage(ctx context.Context, msg *nats.Msg, workerI
 	}
 }
 
+func (s *NATSService) processEmbeddingMessage(ctx context.Context, msg *nats.Msg, workerID string) {
+	// Parse embedding request
+	var req EmbeddingRequest
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		slog.Error("Failed to parse embedding request", 
+			"worker_id", workerID, 
+			"error", err,
+			"data", string(msg.Data))
+		msg.Nak() // Negative acknowledgment
+		return
+	}
+
+	// Generate trace ID if not provided
+	if req.TraceID == "" {
+		req.TraceID = req.ReqID
+	}
+
+	slog.Debug("Processing NATS embedding request",
+		"worker_id", workerID,
+		"req_id", req.ReqID,
+		"trace_id", req.TraceID,
+		"subject", msg.Subject)
+
+	// Create embedding service if not already created
+	if s.embeddingService == nil {
+		s.embeddingService = NewEmbeddingService(s.inferenceService.llm, s.inferenceService.GetRepository())
+	}
+
+	// Process embedding request
+	response, err := s.embeddingService.ProcessEmbedding(
+		ctx, 
+		req, 
+		fmt.Sprintf("nats.%s", msg.Subject), 
+		req.ReplyTo,
+		workerID,
+	)
+
+	// Prepare response
+	responseData, marshalErr := json.Marshal(response)
+	if marshalErr != nil {
+		slog.Error("Failed to marshal embedding response", 
+			"worker_id", workerID,
+			"req_id", req.ReqID, 
+			"error", marshalErr)
+		msg.Nak()
+		return
+	}
+
+	// Send response if reply subject is provided in message payload
+	if req.ReplyTo != "" {
+		if publishErr := s.conn.Publish(req.ReplyTo, responseData); publishErr != nil {
+			slog.Error("Failed to publish embedding response", 
+				"worker_id", workerID,
+				"req_id", req.ReqID,
+				"reply_subject", req.ReplyTo, 
+				"error", publishErr)
+		}
+	}
+
+	// Acknowledge message
+	if ackErr := msg.Ack(); ackErr != nil {
+		slog.Error("Failed to acknowledge embedding message", 
+			"worker_id", workerID,
+			"req_id", req.ReqID, 
+			"error", ackErr)
+	}
+
+	// Log successful processing
+	if err == nil {
+		slog.Info("NATS embedding completed",
+			"worker_id", workerID,
+			"req_id", req.ReqID,
+			"embedding_count", len(response.Data))
+	} else {
+		slog.Error("NATS embedding failed",
+			"worker_id", workerID,
+			"req_id", req.ReqID,
+			"error", err)
+	}
+}
+
 func (s *NATSService) Close() error {
 	if s.conn != nil {
 		s.conn.Close()
 	}
 	return nil
+}
+
+func (s *NATSService) GetConnection() *nats.Conn {
+	return s.conn
 }

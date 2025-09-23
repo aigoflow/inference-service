@@ -28,10 +28,11 @@ bin/inference-server: internal/llama/libbinding.a internal/llama/libllama.a $(sh
 
 build: bin/inference-server
 
-# Build the NATS CLI client
+# Build the NATS CLI clients
 build-cli:
-	@echo "Building NATS CLI client..."
+	@echo "Building NATS CLI clients..."
 	go build -o bin/nats-chat ./examples/nats-chat.go
+	go build -o bin/nats-embed ./examples/nats-embed.go
 
 # Build everything
 build-all: build build-cli

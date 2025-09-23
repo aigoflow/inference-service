@@ -7,7 +7,10 @@ A high-performance Go microservice for AI inference that's faster than Ollama by
 - **Parallel Model Execution**: Multiple models loaded simultaneously for true parallel processing
 - **Dual Access Patterns**: HTTP REST API + NATS messaging for maximum flexibility  
 - **JetStream Integration**: Durable message queueing with work queue patterns for scaling
-- **Grammar-Constrained Generation**: Full CRUD system for GBNF grammar management
+- **Multi-Format Support**: Template, Harmony (GPT-OSS), and ChatML format handling
+- **Raw Mode Control**: Bypass all formatting for reasoning service integration
+- **Real-time Monitoring**: Backpressure reporting and health checks via NATS
+- **Model Discovery**: Automatic service discovery through health topics
 - **Comprehensive Logging**: Request/response audit trail + operational events in SQLite
 - **Metal GPU Acceleration**: Optimized for Apple Silicon with automatic GPU detection
 - **Production Ready**: Clean architecture, structured logging, graceful shutdown
@@ -46,13 +49,22 @@ A high-performance Go microservice for AI inference that's faster than Ollama by
 
 ## 🧪 Tested Models
 
+### Text Generation Models
+
 | Model | Size | Port | NATS Subject | Prompt Format |
 |-------|------|------|--------------|---------------|
 | Gemma3-270M | 235MB | 5770 | `inference.request.gemma3-270m` | Gemma-3 |
 | Qwen3-4B | 2.32GB | 5771 | `inference.request.qwen3-4b` | ChatML |
 | GPT-OSS-20B | ~20GB | 5772 | `inference.request.gpt-oss-20b` | OpenAI |
 
-*Models are automatically downloaded on first use if not present.*
+### Embedding Models
+
+| Model | Size | Port | NATS Subject | Languages | Dimensions |
+|-------|------|------|--------------|-----------|------------|
+| nomic-embed-v1.5 | 261MB | 5778 | `embedding.request.nomic-embed-v1.5` | English | 768 |
+| nomic-embed-v2-moe | 913MB | 5779 | `embedding.request.nomic-embed-v2-moe` | 101 languages | 768 |
+
+*All models are automatically downloaded on first use if not present.*
 
 ## 🛠️ Quick Start
 
@@ -78,7 +90,7 @@ make build-llama  # Auto-detects best GPU support
 
 3. **Build the inference server**
 ```bash
-make build-all    # Builds server + CLI tools
+make build-all    # Builds server + CLI tools (nats-chat + nats-embed)
 ```
 
 ### Running (via Makefile)
@@ -153,6 +165,110 @@ curl -X POST http://localhost:5770/v1/completions \
   -temperature 0.1
 ```
 
+**Raw NATS Messages:**
+```bash
+# Direct NATS request (formatted)
+echo '{
+  "req_id": "manual-req-123",
+  "input": "Hello, world!",
+  "params": {
+    "max_tokens": 50,
+    "temperature": 0.7
+  }
+}' | nats req inference.request.gemma3-270m --timeout=30s
+
+# Direct NATS request (raw mode) 
+echo '{
+  "req_id": "manual-raw-456", 
+  "input": "Hello",
+  "params": {"max_tokens": 20},
+  "raw": true
+}' | nats req inference.request.qwen3-4b --timeout=30s
+
+# Response format:
+{
+  "req_id": "manual-req-123",
+  "text": "Hello! How can I help you today?",
+  "tokens_in": 12,
+  "tokens_out": 8,
+  "finish_reason": "stop",
+  "duration_ms": 156
+}
+```
+
+## 📊 Embeddings
+
+### HTTP Embeddings API
+
+**Basic embedding:**
+```bash
+curl -X POST http://localhost:5778/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "search_query: machine learning",
+    "model": "nomic-embed-v1.5"
+  }'
+```
+
+**Multilingual embedding:**
+```bash
+curl -X POST http://localhost:5779/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "Hola mundo",
+    "model": "nomic-embed-v2-moe"
+  }'
+```
+
+**Multiple inputs:**
+```bash
+curl -X POST http://localhost:5778/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": ["Hello world", "Machine learning", "Artificial intelligence"],
+    "model": "nomic-embed-v1.5"
+  }'
+```
+
+### NATS Embedding Messaging
+
+**English embedding:**
+```bash
+./bin/nats-embed -input "search_query: machine learning"
+```
+
+**Multilingual embedding:**
+```bash
+./bin/nats-embed -subject embedding.request.nomic-embed-v2-moe -input "Bonjour le monde" -model nomic-embed-v2-moe
+```
+
+**Raw NATS embedding requests:**
+```bash
+echo '{
+  "req_id": "embed-123",
+  "input": "Hello world",
+  "model": "nomic-embed-v1.5",
+  "reply_to": "embed.reply.test"
+}' | nats req embedding.request.nomic-embed-v1.5 --server=nats://127.0.0.1:5700 --timeout=10s
+```
+
+**Response format:**
+```json
+{
+  "object": "list",
+  "data": [{
+    "object": "embedding",
+    "embedding": [-0.006747, -0.001334, -0.171558, ...],
+    "index": 0
+  }],
+  "model": "nomic-embed-v1.5",
+  "usage": {
+    "prompt_tokens": 4,
+    "total_tokens": 4
+  }
+}
+```
+
 ### Grammar Management
 
 **Create grammar:**
@@ -213,24 +329,102 @@ make help              # Show all available commands
 
 ### Shortcuts (equivalent to make start WORKER=name)
 ```bash
+# Text Generation Models
 make gemma3-270m        # Start Gemma3-270M
 make qwen3-4b          # Start Qwen3-4B  
 make gpt-oss-20b       # Start GPT-OSS-20B
+
+# Embedding Models
+make nomic-embed-v1.5  # Start English embedding model
+make nomic-embed-v2-moe # Start multilingual MoE embedding model
 ```
 
 **Note**: Models are automatically downloaded with progress indication on first use.
 
 ## 📊 Monitoring & Observability
 
+### Model Discovery & Health Checks
+
+**NATS Health Checks:**
+```bash
+# Check text generation model health
+echo '{}' | nats req models.gemma3-270m.health --server=nats://127.0.0.1:5700 --timeout=5s
+echo '{}' | nats req models.qwen3-4b.health --server=nats://127.0.0.1:5700 --timeout=5s  
+echo '{}' | nats req models.gpt-oss-20b.health --server=nats://127.0.0.1:5700 --timeout=5s
+
+# Check embedding model health
+echo '{}' | nats req models.nomic-embed-v1.5.health --server=nats://127.0.0.1:5700 --timeout=5s
+echo '{}' | nats req models.nomic-embed-v2-moe.health --server=nats://127.0.0.1:5700 --timeout=5s
+
+# Response format:
+{
+  "model_name": "gemma3-270m",
+  "status": "online",
+  "last_activity": "2025-09-23T18:30:15Z",
+  "capabilities": ["text-generation", "reasoning"],
+  "endpoint": "http://localhost:5770",
+  "nats_topic": "inference.request.gemma3-270m",
+  "version": "1.0.0"
+}
+```
+
+**HTTP Health Checks:**
+```bash
+curl http://localhost:5770/healthz  # Basic health
+curl http://localhost:5771/healthz  # Qwen health
+curl http://localhost:5772/healthz  # GPT-OSS health
+```
+
+### Real-time Monitoring
+
+**Backpressure Monitoring:**
+```bash
+# Monitor all models
+nats sub "monitoring.inference.*"
+
+# Monitor specific model
+nats sub "monitoring.inference.gemma3-270m"
+
+# Example monitoring output:
+{
+  "model_name": "gemma3-270m",
+  "pending_messages": 3,
+  "active_processing": 2, 
+  "timestamp": "2025-09-23T18:30:15Z",
+  "worker_count": 2,
+  "queue_capacity": 2000,
+  "status": "warning"
+}
+```
+
+**Monitoring Frequencies:**
+- **1 second**: When pending_messages > 0 (under load)
+- **10 seconds**: When pending_messages = 0 (idle)
+- **Status levels**: healthy, warning, critical
+
+**Heartbeat Monitoring:**
+```bash
+# Monitor model heartbeats
+nats sub "models.*.heartbeat"
+
+# Monitor specific model heartbeats  
+nats sub "models.gemma3-270m.heartbeat"
+```
+
 ### Request Logs
 All inference requests are logged to SQLite with full details:
 ```bash
-# View recent requests
-curl http://localhost:5770/logs?limit=10
-
-# Direct SQLite access
+# View recent requests with worker IDs
 sqlite3 data/logs/gemma3-270m.sqlite \
-  "SELECT req_id, input_len, tokens_out, dur_ms, status FROM requests ORDER BY id DESC LIMIT 5"
+  "SELECT req_id, worker_id, raw_input, formatted_input, dur_ms, status, datetime(ts, 'unixepoch') as time FROM requests ORDER BY ts DESC LIMIT 5"
+
+# View requests by worker
+sqlite3 data/logs/gemma3-270m.sqlite \
+  "SELECT worker_id, COUNT(*) as request_count, AVG(dur_ms) as avg_latency FROM requests GROUP BY worker_id"
+
+# Monitor backpressure trends
+sqlite3 data/logs/gemma3-270m.sqlite \
+  "SELECT datetime(ts, 'unixepoch') as time, dur_ms, tokens_out FROM requests ORDER BY ts DESC LIMIT 20"
 ```
 
 ### Event Logs  
@@ -246,11 +440,117 @@ Events include:
 - `model.loaded` - Model ready for inference
 - `services.init` - HTTP/NATS services starting
 - `server.ready` - Ready to accept requests
+- `health.started` - Health monitoring active
+- `monitoring.started` - Backpressure monitoring active
 
-### Health Checks
+## 🔧 Advanced Features
+
+### Raw Mode Control
+
+**HTTP Raw Mode:**
 ```bash
-curl http://localhost:5770/healthz  # Basic health
-curl http://localhost:5770/logs     # Request history
+# Bypass all formatting - pure model output
+curl -X POST http://localhost:5770/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "Hello",
+    "params": {"max_tokens": 20},
+    "raw": true
+  }'
+
+# Raw response (no template formatting):
+{
+  "ms": 150,
+  "text": " there!\n\nI hope you're doing well",
+  "tokens_in": 1,
+  "tokens_out": 10
+}
+```
+
+**NATS Raw Mode:**
+```bash
+# Raw mode via NATS messaging
+echo '{
+  "req_id": "test-raw-123",
+  "input": "Complete: The capital of France is",
+  "params": {"max_tokens": 5},
+  "raw": true
+}' | nats req inference.request.gemma3-270m --timeout=30s
+```
+
+### Model Format Configuration
+
+**Template Format (Default for Gemma/Qwen):**
+```bash
+# Environment: MODEL_FORMAT=template
+# Uses: data/models/{model}/prompt_template.json
+
+# Example template file:
+{
+  "name": "Gemma-3",
+  "user_prefix": "<start_of_turn>user\n",
+  "user_suffix": "<end_of_turn>\n",
+  "model_prefix": "<start_of_turn>model\n",
+  "model_suffix": ""
+}
+```
+
+**Harmony Format (GPT-OSS Models):**
+```bash
+# Environment: MODEL_FORMAT=harmony
+# Uses: OpenAI Harmony response format
+
+# Harmony configuration:
+HARMONY_REASONING_LEVEL=medium
+HARMONY_EXTRACT_FINAL=true
+HARMONY_MODEL_IDENTITY=ChatGPT, a large language model trained by OpenAI
+HARMONY_KNOWLEDGE_CUTOFF=2024-06
+```
+
+### Service Discovery & Integration
+
+**Model Discovery:**
+```bash
+# Discover all available models
+for model in gemma3-270m qwen3-4b gpt-oss-20b; do
+  echo "Checking $model..."
+  echo '{}' | nats req models.$model.health --timeout=2s | jq -r '.status'
+done
+
+# Output:
+# Checking gemma3-270m...
+# online
+# Checking qwen3-4b...  
+# online
+# Checking gpt-oss-20b...
+# online
+```
+
+**Load Balancing Information:**
+```bash
+# Monitor all model loads
+nats sub "monitoring.inference.*" | jq '.model_name, .pending_messages, .status'
+
+# Choose least loaded model
+echo '{}' | nats req models.gemma3-270m.health | jq -r '.nats_topic'
+# Output: inference.request.gemma3-270m
+```
+
+### Multi-Model Workflows
+
+**Model Selection Strategy:**
+```bash
+# Fast responses: Use Gemma3-270M
+curl -X POST http://localhost:5770/v1/completions \
+  -d '{"input": "Quick math: 2+2", "params": {"max_tokens": 10}}'
+
+# Balanced reasoning: Use Qwen3-4B  
+curl -X POST http://localhost:5771/v1/completions \
+  -d '{"input": "Explain photosynthesis", "params": {"max_tokens": 200}}'
+
+# Advanced reasoning: Use GPT-OSS-20B
+curl -X POST http://localhost:5772/v1/completions \
+  -d '{"input": "Design a multi-agent system architecture", "params": {"max_tokens": 500}}'
 ```
 
 ## 🧪 Testing
@@ -472,6 +772,131 @@ Model providers:
 - [Ollama](https://ollama.ai/) - Alternative LLM serving platform
 - [vLLM](https://github.com/vllm-project/vllm) - High-throughput LLM serving
 - [Text Generation Inference](https://github.com/huggingface/text-generation-inference) - Hugging Face inference server
+
+---
+
+## 📡 NATS Topics Reference
+
+### Model Communication Topics
+
+**Inference Requests:**
+```bash
+# Send inference requests
+inference.request.gemma3-270m     # Fast lightweight model
+inference.request.qwen3-4b        # Balanced performance model  
+inference.request.gpt-oss-20b     # Advanced reasoning model
+```
+
+**Health & Discovery:**
+```bash
+# Health check requests (request/reply)
+models.gemma3-270m.health         # Check Gemma health
+models.qwen3-4b.health           # Check Qwen health
+models.gpt-oss-20b.health        # Check GPT-OSS health
+
+# Heartbeat broadcasts (publish only)
+models.gemma3-270m.heartbeat     # Gemma heartbeats (every 30s)
+models.qwen3-4b.heartbeat        # Qwen heartbeats (every 30s) 
+models.gpt-oss-20b.heartbeat     # GPT-OSS heartbeats (every 30s)
+```
+
+**Monitoring & Observability:**
+```bash
+# Backpressure monitoring (publish only)
+monitoring.inference.gemma3-270m  # Gemma load reports
+monitoring.inference.qwen3-4b     # Qwen load reports
+monitoring.inference.gpt-oss-20b  # GPT-OSS load reports
+
+# Aggregate monitoring (future)
+monitoring.inference.*            # All model reports
+monitoring.aggregate              # System-wide metrics
+monitoring.alerts                 # Critical alerts
+```
+
+### Example NATS Message Flows
+
+**Health Check Flow:**
+```bash
+# 1. Send health request
+echo '{}' | nats req models.gemma3-270m.health --timeout=5s
+
+# 2. Receive health response
+{
+  "model_name": "gemma3-270m",
+  "status": "online",
+  "capabilities": ["text-generation", "reasoning"],
+  "endpoint": "http://localhost:5770",
+  "nats_topic": "inference.request.gemma3-270m"
+}
+```
+
+**Inference Request Flow:**
+```bash
+# 1. Send inference request
+echo '{
+  "req_id": "test-123",
+  "input": "What is machine learning?",
+  "params": {"max_tokens": 100, "temperature": 0.7}
+}' | nats req inference.request.qwen3-4b --timeout=30s
+
+# 2. Receive inference response
+{
+  "req_id": "test-123",
+  "text": "Machine learning is a subset of artificial intelligence...",
+  "tokens_in": 15,
+  "tokens_out": 87,
+  "finish_reason": "stop",
+  "duration_ms": 1250
+}
+```
+
+**Monitoring Subscription:**
+```bash
+# Subscribe to all monitoring data
+nats sub "monitoring.inference.*"
+
+# Real-time monitoring output:
+[#1] Received on "monitoring.inference.gemma3-270m"
+{"model_name":"gemma3-270m","pending_messages":0,"active_processing":0,"status":"healthy"}
+
+[#2] Received on "monitoring.inference.qwen3-4b"  
+{"model_name":"qwen3-4b","pending_messages":2,"active_processing":1,"status":"warning"}
+```
+
+## 🔌 Integration Patterns
+
+### For Reasoning Services
+```bash
+# 1. Check model availability
+echo '{}' | nats req models.qwen3-4b.health
+
+# 2. Monitor current load  
+nats sub "monitoring.inference.qwen3-4b" --count=1
+
+# 3. Send reasoning request with raw control
+echo '{
+  "req_id": "reasoning-456",
+  "input": "<|start|>system<|message|>You are an expert...",
+  "params": {"max_tokens": 500},
+  "raw": true
+}' | nats req inference.request.gpt-oss-20b
+```
+
+### For Agent Services
+```bash
+# 1. Discover available models
+for model in gemma3-270m qwen3-4b gpt-oss-20b; do
+  status=$(echo '{}' | nats req models.$model.health --timeout=2s | jq -r '.status')
+  echo "$model: $status"
+done
+
+# 2. Choose model based on load
+best_model=$(nats sub "monitoring.inference.*" --count=3 | \
+  jq -r 'select(.status=="healthy") | .model_name' | head -1)
+
+# 3. Route request to best model  
+echo "Routing to: $best_model"
+```
 
 ---
 
