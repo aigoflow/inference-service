@@ -128,6 +128,11 @@ if [ "$BUILD_TYPE" = "metal" ] && [ -f "$LLAMA_DIR/$BUILD_DIR/bin/ggml-metal.met
     cp "$LLAMA_DIR/$BUILD_DIR/bin/ggml-metal.metal" "$TARGET_DIR/"
 fi
 
+# Copy custom binding files
+echo "Copying custom binding..."
+cp "$SCRIPT_DIR/../internal/llama/binding.cpp" "$TARGET_DIR/"
+cp "$SCRIPT_DIR/../internal/llama/binding.h" "$TARGET_DIR/"
+
 # Build our custom binding
 echo "Building custom binding..."
 cd "$TARGET_DIR"
