@@ -5,6 +5,7 @@ go 1.23
 require (
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/nats-io/nats.go v1.31.0
+	github.com/oklog/ulid/v2 v2.1.1
 )
 
 require (

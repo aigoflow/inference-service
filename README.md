@@ -1,19 +1,16 @@
-# AI Inference Service
+# Inference Service
 
-A high-performance Go microservice for AI inference that's faster than Ollama by keeping multiple models loaded in memory and enabling true parallel execution. Built with clean architecture principles and comprehensive observability.
+A high-performance, GPU-accelerated AI inference service with NATS messaging and multi-model support.
 
-## 🚀 Features
+## Features
 
-- **Parallel Model Execution**: Multiple models loaded simultaneously for true parallel processing
-- **Dual Access Patterns**: HTTP REST API + NATS messaging for maximum flexibility  
-- **JetStream Integration**: Durable message queueing with work queue patterns for scaling
-- **Multi-Format Support**: Template, Harmony (GPT-OSS), and ChatML format handling
-- **Raw Mode Control**: Bypass all formatting for reasoning service integration
-- **Real-time Monitoring**: Backpressure reporting and health checks via NATS
-- **Model Discovery**: Automatic service discovery through health topics
-- **Comprehensive Logging**: Request/response audit trail + operational events in SQLite
-- **Metal GPU Acceleration**: Optimized for Apple Silicon with automatic GPU detection
-- **Production Ready**: Clean architecture, structured logging, graceful shutdown
+- 🚀 **GPU Acceleration**: Metal (Apple Silicon) and CUDA support
+- 🔄 **NATS Messaging**: Distributed inference via NATS JetStream
+- 🤖 **Multi-Model Support**: Gemma 3, Qwen 3, GPT-OSS models
+- 📦 **Client Package**: Importable Go client for easy integration
+- 🔧 **Raw & Formatted Modes**: Full control over model output
+- 📊 **Health Monitoring**: Real-time health checks and performance metrics
+- 🎯 **Production Ready**: Proper error handling, timeouts, logging
 
 ## 🏗️ Architecture
 
