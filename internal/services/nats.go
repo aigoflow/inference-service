@@ -371,3 +371,7 @@ func (s *NATSService) Close() error {
 func (s *NATSService) GetConnection() *nats.Conn {
 	return s.conn
 }
+
+func (s *NATSService) GetMonitoringService() *MonitoringService {
+	return s.monitoring
+}

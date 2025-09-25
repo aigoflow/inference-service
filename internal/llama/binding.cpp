@@ -353,4 +353,97 @@ int get_embedding_size(void* model) {
     return llama_model_n_embd((llama_model*)model);
 }
 
+// Model introspection functions
+const char* get_model_architecture(void* model) {
+    if (!model) return "unknown";
+    
+    const llama_model* m = (const llama_model*)model;
+    
+    // Try to get architecture from model metadata using buffer
+    static char arch_buf[64];
+    int32_t result = llama_model_meta_val_str(m, "general.architecture", arch_buf, sizeof(arch_buf));
+    
+    return (result > 0) ? arch_buf : "llama";  // Default to llama if not found
+}
+
+const char* get_model_name(void* model) {
+    if (!model) return "unknown";
+    
+    const llama_model* m = (const llama_model*)model;
+    
+    static char name_buf[128];
+    int32_t result = llama_model_meta_val_str(m, "general.name", name_buf, sizeof(name_buf));
+    
+    return (result > 0) ? name_buf : "unnamed";
+}
+
+int get_model_parameter_count(void* model) {
+    if (!model) return 0;
+    
+    const llama_model* m = (const llama_model*)model;
+    
+    // Try to get parameter count from metadata
+    // This might not always be available in GGUF
+    return llama_model_n_params(m);
+}
+
+const char* get_model_quantization(void* model) {
+    if (!model) return "unknown";
+    
+    const llama_model* m = (const llama_model*)model;
+    
+    static char quant_buf[32];
+    int32_t result = llama_model_meta_val_str(m, "general.quantization_version", quant_buf, sizeof(quant_buf));
+    
+    return (result > 0) ? quant_buf : "fp16";  // Default assumption
+}
+
+const char* get_model_family(void* model) {
+    if (!model) return "unknown";
+    
+    const llama_model* m = (const llama_model*)model;
+    
+    static char family_buf[64];
+    int32_t result = llama_model_meta_val_str(m, "general.family", family_buf, sizeof(family_buf));
+    
+    if (result > 0) return family_buf;
+    
+    // Fallback to architecture-based family detection
+    const char* arch = get_model_architecture(model);
+    if (strstr(arch, "llama")) return "llama";
+    if (strstr(arch, "gemma")) return "gemma";
+    if (strstr(arch, "qwen")) return "qwen";
+    if (strstr(arch, "phi")) return "phi";
+    
+    return "unknown";
+}
+
+bool model_supports_images(void* model) {
+    if (!model) return false;
+    
+    const llama_model* m = (const llama_model*)model;
+    
+    // Check if model has vision/image processing capabilities
+    // This is determined by checking for vision-specific layers or metadata
+    const char* arch = get_model_architecture(model);
+    
+    // Common vision-enabled architectures
+    return strstr(arch, "llava") != nullptr ||
+           strstr(arch, "clip") != nullptr ||
+           strstr(arch, "vision") != nullptr ||
+           strstr(arch, "multimodal") != nullptr;
+}
+
+bool model_supports_audio(void* model) {
+    if (!model) return false;
+    
+    const llama_model* m = (const llama_model*)model;
+    const char* arch = get_model_architecture(model);
+    
+    // Common audio-enabled architectures
+    return strstr(arch, "whisper") != nullptr ||
+           strstr(arch, "audio") != nullptr ||
+           strstr(arch, "speech") != nullptr;
+}
+
 } // extern "C"

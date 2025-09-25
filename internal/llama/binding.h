@@ -40,6 +40,15 @@ bool has_gpu_support();
 int llama_embedding(void* ctx, const char* text, float* embeddings, int max_embeddings);
 int get_embedding_size(void* model);
 
+// Model introspection
+const char* get_model_architecture(void* model);
+const char* get_model_name(void* model);
+int get_model_parameter_count(void* model);
+const char* get_model_quantization(void* model);
+const char* get_model_family(void* model);
+bool model_supports_images(void* model);
+bool model_supports_audio(void* model);
+
 #ifdef __cplusplus
 }
 #endif

@@ -7,6 +7,8 @@ A high-performance, GPU-accelerated AI inference service with NATS messaging and
 - 🚀 **GPU Acceleration**: Metal (Apple Silicon) and CUDA support
 - 🔄 **NATS Messaging**: Distributed inference via NATS JetStream
 - 🤖 **Multi-Model Support**: Gemma 3, Qwen 3, GPT-OSS models
+- 🧠 **Dynamic Capability Detection**: Auto-detects text, embeddings, reasoning, tool-calling
+- 🔍 **Real-time Monitoring**: Web dashboard + CLI tools for service discovery
 - 📦 **Client Package**: Importable Go client for easy integration
 - 🔧 **Raw & Formatted Modes**: Full control over model output
 - 📊 **Health Monitoring**: Real-time health checks and performance metrics
@@ -306,6 +308,7 @@ All operations are managed through the Makefile for consistency and ease of use:
 make build-llama         # Build llama.cpp with auto-detected GPU
 make build              # Build inference server
 make build-cli          # Build NATS CLI client
+make build-monitor      # Build monitoring tool
 make build-all          # Build everything
 ```
 
@@ -321,6 +324,9 @@ make stop              # Stop all models
 ```bash
 make test WORKER=name   # Test model endpoints
 make logs WORKER=name   # View request logs from SQLite
+make monitor-status     # Get current service status
+make monitor-cli        # Start CLI monitoring dashboard
+make monitor-dashboard  # Start web dashboard (http://localhost:8080)
 make help              # Show all available commands
 ```
 
@@ -338,6 +344,89 @@ make nomic-embed-v2-moe # Start multilingual MoE embedding model
 
 **Note**: Models are automatically downloaded with progress indication on first use.
 
+## 🔍 Service Monitoring & Discovery
+
+### Real-time Monitoring Dashboard
+
+**Web Dashboard (Recommended):**
+```bash
+make monitor-dashboard
+# Opens: http://localhost:8080
+```
+
+Features:
+- 🌐 **Real-time updates** via Server-Sent Events
+- 📊 **Capability matrix** showing detected features per model
+- 🎯 **Architecture detection** (gemma3, qwen3, gpt-oss, nomic-bert)
+- 📈 **Parameter counts** (268M, 4.0B, 20.9B)
+- 🔗 **Endpoint mapping** (HTTP + NATS topics)
+- ⚡ **Response times** and last seen timestamps
+
+**CLI Dashboard (htop-style):**
+```bash
+make monitor-cli
+# Real-time terminal dashboard with auto-refresh
+```
+
+**One-time Status:**
+```bash
+make monitor-status
+# Quick snapshot of all running services
+```
+
+### REST API for Integration
+
+**List all services:**
+```bash
+curl http://localhost:5780/api/services | jq
+```
+
+**Query specific service:**
+```bash
+curl http://localhost:5780/api/services/gemma3-270m | jq
+```
+
+**Real-time events stream:**
+```bash
+curl -N http://localhost:5780/api/events
+# Server-Sent Events stream for real-time updates
+```
+
+### Enhanced Features
+
+**Complete Service Information:**
+- 🧠 **Dynamic Capability Detection**: Auto-detects text, embeddings, reasoning, tool-calling
+- 📊 **Queue Metrics**: Pending messages, active processing, queue capacity  
+- 🎯 **Backpressure Status**: Health levels (healthy/warning/critical) with utilization %
+- ⏱️ **Uptime Tracking**: Time since monitor first discovered each service
+- 📅 **Discovery Timestamps**: Exact time when services were first seen
+- 🔄 **Real-time Updates**: Live data via NATS heartbeat system
+
+**API Response Example:**
+```json
+{
+  "model_name": "qwen3-4b",
+  "status": "online",
+  "capabilities": ["text-generation", "embeddings", "reasoning", "tool-calling"],
+  "model_info": {
+    "architecture": "qwen3",
+    "embedding_size": 2560,
+    "parameter_count": "4.0B"
+  },
+  "queue_metrics": {
+    "pending_messages": 0,
+    "active_processing": 0,
+    "queue_capacity": 2000
+  },
+  "backpressure_status": {
+    "level": "healthy",
+    "utilization": 0.0
+  },
+  "first_seen": "2025-09-25T15:12:48+02:00",
+  "uptime": 300000000000
+}
+```
+
 ## 📊 Monitoring & Observability
 
 ### Model Discovery & Health Checks
@@ -353,15 +442,24 @@ echo '{}' | nats req models.gpt-oss-20b.health --server=nats://127.0.0.1:5700 --
 echo '{}' | nats req models.nomic-embed-v1.5.health --server=nats://127.0.0.1:5700 --timeout=5s
 echo '{}' | nats req models.nomic-embed-v2-moe.health --server=nats://127.0.0.1:5700 --timeout=5s
 
-# Response format:
+# Enhanced response format with dynamic capability detection:
 {
   "model_name": "gemma3-270m",
   "status": "online",
-  "last_activity": "2025-09-23T18:30:15Z",
-  "capabilities": ["text-generation", "reasoning"],
+  "last_activity": "2025-09-25T10:30:15Z",
+  "capabilities": ["text-generation", "embeddings", "reasoning", "grammar-constrained"],
   "endpoint": "http://localhost:5770",
   "nats_topic": "inference.request.gemma3-270m",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "model_info": {
+    "architecture": "gemma3",
+    "modalities": ["text", "embeddings"],
+    "parameter_count": "268M",
+    "context_size": 8192,
+    "embedding_size": 640,
+    "quantization": "Q4_K_M",
+    "model_family": "gemma"
+  }
 }
 ```
 

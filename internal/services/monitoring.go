@@ -13,10 +13,12 @@ import (
 )
 
 type MonitoringService struct {
-	nats         *nats.Conn
-	config       *config.Config
-	pendingCount int64 // atomic counter
-	activeCount  int64 // atomic counter for active processing
+	nats              *nats.Conn
+	config            *config.Config
+	pendingCount      int64     // atomic counter
+	activeCount       int64     // atomic counter for active processing
+	totalProcessed    int64     // atomic counter for total processed
+	lastProcessedTime time.Time // last message processed time
 }
 
 type BackpressureReport struct {
@@ -154,4 +156,30 @@ func (m *MonitoringService) GetPendingCount() int64 {
 // GetActiveCount returns current active count
 func (m *MonitoringService) GetActiveCount() int64 {
 	return atomic.LoadInt64(&m.activeCount)
+}
+
+// GetPendingMessages returns current pending message count (alias for consistency)
+func (m *MonitoringService) GetPendingMessages() int64 {
+	return atomic.LoadInt64(&m.pendingCount)
+}
+
+// GetActiveProcessing returns current active processing count (alias for consistency)
+func (m *MonitoringService) GetActiveProcessing() int64 {
+	return atomic.LoadInt64(&m.activeCount)
+}
+
+// GetTotalProcessed returns total processed messages
+func (m *MonitoringService) GetTotalProcessed() int64 {
+	return atomic.LoadInt64(&m.totalProcessed)
+}
+
+// GetLastProcessedTime returns when last message was processed
+func (m *MonitoringService) GetLastProcessedTime() time.Time {
+	return m.lastProcessedTime
+}
+
+// IncrementProcessed atomically increments total processed count
+func (m *MonitoringService) IncrementProcessed() {
+	atomic.AddInt64(&m.totalProcessed, 1)
+	m.lastProcessedTime = time.Now()
 }

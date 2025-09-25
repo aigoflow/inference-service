@@ -106,8 +106,8 @@ func main() {
 		os.Exit(1)
 	}
 	
-	// Initialize Health service for model discovery
-	healthService := services.NewHealthService(natsService.GetConnection(), cfg)
+	// Initialize Health service for model discovery with capability detection
+	healthService := services.NewHealthService(natsService.GetConnection(), cfg, llm, natsService.GetMonitoringService())
 
 	// Start HTTP server
 	httpServer := server.NewServer(cfg.HTTPAddr, inferenceService, grammarService, llm)

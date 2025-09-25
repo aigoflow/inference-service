@@ -17,11 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 	
 	"github.com/aigoflow/inference-service/internal/config"
 	"github.com/aigoflow/inference-service/internal/harmony"
+	"github.com/aigoflow/inference-service/internal/capabilities"
 )
 
 // Config holds the configuration for the llama model
@@ -295,6 +298,125 @@ func (m *Model) GetEmbeddingSize() int {
 // IsEmbeddingModel checks if this model supports embedding generation
 func (m *Model) IsEmbeddingModel() bool {
 	return m.GetEmbeddingSize() > 0
+}
+
+// GetModelArchitecture returns the model architecture (llama, gemma, qwen, etc.)
+func (m *Model) GetModelArchitecture() string {
+	if m.model == nil {
+		return "unknown"
+	}
+	return C.GoString(C.get_model_architecture(m.model))
+}
+
+// GetSupportedModalities returns the modalities this model supports
+func (m *Model) GetSupportedModalities() []string {
+	modalities := []string{"text"} // All models support text
+
+	if m.IsEmbeddingModel() {
+		modalities = append(modalities, "embeddings")
+	}
+
+	// Check for multimodal capabilities
+	if m.model != nil {
+		if bool(C.model_supports_images(m.model)) {
+			modalities = append(modalities, "image")
+		}
+		if bool(C.model_supports_audio(m.model)) {
+			modalities = append(modalities, "audio")
+		}
+	}
+
+	return modalities
+}
+
+// GetModelMetadata returns comprehensive metadata about the model
+func (m *Model) GetModelMetadata() capabilities.ModelMetadata {
+	if m.model == nil {
+		return capabilities.ModelMetadata{
+			Architecture: "unknown",
+			Modalities:   []string{"text"},
+		}
+	}
+
+	// Get parameter count and format it nicely
+	paramCount := int64(C.get_model_parameter_count(m.model))
+	paramCountStr := formatParameterCount(paramCount)
+
+	// Get context size
+	contextSize := m.config.CtxSize
+	if contextSize == 0 {
+		contextSize = int(C.get_context_size(m.model))
+	}
+
+	metadata := capabilities.ModelMetadata{
+		Architecture:   m.GetModelArchitecture(),
+		Modalities:     m.GetSupportedModalities(),
+		ParameterCount: paramCountStr,
+		ContextSize:    contextSize,
+		EmbeddingSize:  m.GetEmbeddingSize(),
+		Quantization:   C.GoString(C.get_model_quantization(m.model)),
+		ModelFamily:    C.GoString(C.get_model_family(m.model)),
+		Additional: map[string]interface{}{
+			"model_name": C.GoString(C.get_model_name(m.model)),
+			"config_name": m.config.ModelName,
+			"model_path": m.config.ModelPath,
+		},
+	}
+
+	return metadata
+}
+
+// HasCapability checks if the model has a specific capability
+func (m *Model) HasCapability(capability string) bool {
+	switch strings.ToLower(capability) {
+	case "text", "text-generation":
+		return true // All models support text generation
+	case "embeddings":
+		return m.IsEmbeddingModel()
+	case "image", "image-understanding":
+		return m.model != nil && bool(C.model_supports_images(m.model))
+	case "audio", "audio-transcription":
+		return m.model != nil && bool(C.model_supports_audio(m.model))
+	case "reasoning":
+		return m.supportsReasoning()
+	case "grammar", "grammar-constrained":
+		return true // All text models support grammar constraints
+	default:
+		return false
+	}
+}
+
+// supportsReasoning checks if the model is known to support reasoning
+func (m *Model) supportsReasoning() bool {
+	arch := strings.ToLower(m.GetModelArchitecture())
+	family := strings.ToLower(C.GoString(C.get_model_family(m.model)))
+	
+	reasoningArchs := []string{"gpt", "gemma", "qwen", "llama", "phi", "mistral"}
+	
+	for _, reasoningArch := range reasoningArchs {
+		if strings.Contains(arch, reasoningArch) || strings.Contains(family, reasoningArch) {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// formatParameterCount formats parameter count in human-readable form (1B, 7B, etc.)
+func formatParameterCount(count int64) string {
+	if count == 0 {
+		return "unknown"
+	}
+	
+	if count >= 1e9 {
+		return fmt.Sprintf("%.1fB", float64(count)/1e9)
+	} else if count >= 1e6 {
+		return fmt.Sprintf("%.0fM", float64(count)/1e6)
+	} else if count >= 1e3 {
+		return fmt.Sprintf("%.0fK", float64(count)/1e3)
+	}
+	
+	return strconv.FormatInt(count, 10)
 }
 
 func truncateString(s string, maxLen int) string {

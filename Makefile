@@ -34,8 +34,26 @@ build-cli:
 	go build -o bin/nats-chat ./examples/nats-chat.go
 	go build -o bin/nats-embed ./examples/nats-embed.go
 
+# Build the monitoring tool
+build-monitor:
+	@echo "Building monitoring tool..."
+	go build -o bin/inference-monitor ./cmd/monitor
+
 # Build everything
-build-all: build build-cli
+build-all: build build-cli build-monitor
+
+# Monitoring commands
+monitor-cli:
+	@echo "Starting CLI monitoring dashboard..."
+	./bin/inference-monitor --cli
+
+monitor-dashboard:
+	@echo "Starting web monitoring dashboard on http://localhost:5780"
+	./bin/inference-monitor --http :5780
+
+monitor-status:
+	@echo "Getting current service status..."
+	./bin/inference-monitor --once
 
 
 # Clean build artifacts
