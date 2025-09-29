@@ -55,6 +55,7 @@ A high-performance, GPU-accelerated AI inference service with NATS messaging and
 | Gemma3-270M | 235MB | 5770 | `inference.request.gemma3-270m` | Gemma-3 |
 | Qwen3-4B | 2.32GB | 5771 | `inference.request.qwen3-4b` | ChatML |
 | GPT-OSS-20B | ~20GB | 5772 | `inference.request.gpt-oss-20b` | OpenAI |
+| LFM2-1.2B-Tool | 695MB | 5775 | `inference.request.lfm2-1.2b` | ChatML |
 
 ### Embedding Models
 
@@ -62,6 +63,12 @@ A high-performance, GPU-accelerated AI inference service with NATS messaging and
 |-------|------|------|--------------|-----------|------------|
 | nomic-embed-v1.5 | 261MB | 5778 | `embedding.request.nomic-embed-v1.5` | English | 768 |
 | nomic-embed-v2-moe | 913MB | 5779 | `embedding.request.nomic-embed-v2-moe` | 101 languages | 768 |
+
+### Specialized Models
+
+| Model | Size | Port | NATS Subject | Purpose |
+|-------|------|------|--------------|---------|
+| LFM2-350M-Extract | 216MB | 5774 | `inference.request.lfm2-350m` | Data extraction (JSON/XML/YAML) |
 
 *All models are automatically downloaded on first use if not present.*
 
@@ -194,6 +201,55 @@ echo '{
   "duration_ms": 156
 }
 ```
+
+## 🔍 Data Extraction
+
+### LFM2-350M-Extract Model
+
+Specialized model for extracting structured data (JSON/XML/YAML) from unstructured text:
+
+**Extract invoice data:**
+```bash
+curl -X POST http://localhost:5774/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "Invoice #INV-2025-00342 from suppliers@acme-corp.com dated March 15, 2025. 150 units of Product XYZ-500 at $45.99 per unit, totaling $6,898.50. Payment due April 14, 2025. Bank: Account 1234567890, Routing 987654321.",
+    "params": {"max_tokens": 300, "temperature": 0.1}
+  }'
+```
+
+**Response:**
+```json
+{
+  "invoice_details": {
+    "invoice_number": "INV-2025-00342",
+    "date_issued": "2025-03-15",
+    "total_amount": "$6,898.50",
+    "due_date": "2025-04-14",
+    "bank_details": {
+      "account_number": "1234567890",
+      "routing_number": "987654321"
+    }
+  }
+}
+```
+
+**Extract from messy text:**
+```bash
+curl -X POST http://localhost:5774/v1/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": "hey Sarah!!! meeting next tuesday at 3pm at starbucks on 5th ave. My cell is 555-1234 or email bob.jones@company.co.uk. Project code: PROJ-2025-ABC, budget $15k-$20k. Deadline: end of Q2 2025",
+    "params": {"max_tokens": 300, "temperature": 0.1}
+  }'
+```
+
+**Use cases:**
+- Invoice and receipt parsing
+- Contact information extraction
+- Document metadata extraction
+- Entity recognition from unstructured text
+- Converting historical/archaic documents to structured data
 
 ## 📊 Embeddings
 
@@ -334,12 +390,16 @@ make help              # Show all available commands
 ```bash
 # Text Generation Models
 make gemma3-270m        # Start Gemma3-270M
-make qwen3-4b          # Start Qwen3-4B  
+make qwen3-4b          # Start Qwen3-4B
 make gpt-oss-20b       # Start GPT-OSS-20B
+make lfm2-1.2b         # Start LFM2-1.2B-Tool (chat + tool calling)
 
 # Embedding Models
 make nomic-embed-v1.5  # Start English embedding model
 make nomic-embed-v2-moe # Start multilingual MoE embedding model
+
+# Specialized Models
+make lfm2-350m         # Start LFM2-350M-Extract (data extraction)
 ```
 
 **Note**: Models are automatically downloaded with progress indication on first use.
