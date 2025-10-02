@@ -1,0 +1,17 @@
+Extract information about all Byzantine emperors mentioned in the article and organize it in the following JSON format:
+
+{
+  "emperors": [
+    {
+      "name": "Emperor Name",
+      "reign_period": "start_year - end_year",
+      "dynasty": "Dynasty name if mentioned",
+      "major_achievements": ["achievement 1", "achievement 2"],
+      "major_failures": ["failure 1", "failure 2"],
+      "cause_of_end_of_reign": "death/overthrown/abdicated/etc",
+      "notable_wars": ["war 1", "war 2"]
+    }
+  ]
+}
+
+Include only emperors for whom you can find specific information in the text. If certain fields are not mentioned for an emperor, use "not specified" as the value.

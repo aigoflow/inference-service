@@ -63,3 +63,12 @@ internal/llama/ggml_include/
 # Build artifacts
 build/
 dist/
+# Whisper model binaries
+data/models/*/*.bin
+*.bin
+
+# Build artifacts
+*.o
+*.a
+*.dylib
+*.so

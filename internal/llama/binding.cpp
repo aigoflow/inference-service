@@ -96,39 +96,84 @@ int llama_predict(void* ctx, const char* prompt, char* result, int result_size,
     std::string generated_text;
     int tokens_generated = 0;
     
-    // Main generation loop following simple.cpp exactly
-    llama_batch batch = llama_batch_get_one(prompt_tokens.data(), prompt_tokens.size());
+    // Main generation loop with chunked prompt processing
     int n_pos = 0;
+    const int BATCH_SIZE = 512;  // Process in chunks to avoid memory issues
     
-    for (int i = 0; i < max_tokens && n_pos + batch.n_tokens < n_prompt + max_tokens; ) {
-        // Decode current batch
-        if (llama_decode(context, batch)) {
-            break; // Failed to evaluate
+    // Process prompt in chunks first
+    printf("[DEBUG] Processing prompt with %d tokens in chunks of %d\n", n_prompt, BATCH_SIZE);
+    fflush(stdout);
+    
+    for (int chunk_start = 0; chunk_start < n_prompt; chunk_start += BATCH_SIZE) {
+        int chunk_size = std::min(BATCH_SIZE, n_prompt - chunk_start);
+        llama_batch chunk_batch = llama_batch_get_one(prompt_tokens.data() + chunk_start, chunk_size);
+        
+        printf("[DEBUG] Processing chunk %d-%d (%d tokens)\n", chunk_start, chunk_start + chunk_size - 1, chunk_size);
+        fflush(stdout);
+        
+        int decode_result = llama_decode(context, chunk_batch);
+        printf("[DEBUG] Chunk decode result: %d\n", decode_result);
+        fflush(stdout);
+        
+        if (decode_result) {
+            printf("[DEBUG] Chunk decode failed, aborting\n");
+            fflush(stdout);
+            return -1;
         }
-        
-        n_pos += batch.n_tokens;
-        
+        n_pos += chunk_size;
+    }
+    
+    printf("[DEBUG] Prompt processing complete, starting generation\n");
+    fflush(stdout);
+    
+    // Now start generation loop
+    for (int i = 0; i < max_tokens; ) {
         // Sample next token
+        printf("[DEBUG] About to sample next token at position %d\n", n_pos);
+        fflush(stdout);
         llama_token new_token_id = llama_sampler_sample(smpl, context, -1);
+        printf("[DEBUG] Sampled token: %d\n", new_token_id);
+        fflush(stdout);
         
         // Check for end of generation
         if (llama_vocab_is_eog(vocab, new_token_id)) {
+            printf("[DEBUG] End of generation token detected\n");
+            fflush(stdout);
             break;
         }
         
         // Convert token to text
+        printf("[DEBUG] About to convert token to text\n");
+        fflush(stdout);
         char buf[128];
         int n = llama_token_to_piece(vocab, new_token_id, buf, sizeof(buf), 0, true);
+        printf("[DEBUG] Token conversion result: %d bytes\n", n);
+        fflush(stdout);
         if (n > 0) {
             generated_text.append(buf, n);
             tokens_generated++;
+            printf("[DEBUG] Generated token %d, total length: %zu\n", tokens_generated, generated_text.length());
+            fflush(stdout);
         }
         
         // Accept token for sampler state management
         llama_sampler_accept(smpl, new_token_id);
         
-        // Prepare next batch with the new token
-        batch = llama_batch_get_one(&new_token_id, 1);
+        // Prepare next batch with the new token and decode it
+        printf("[DEBUG] Preparing batch for next token: %d\n", new_token_id);
+        fflush(stdout);
+        llama_batch next_batch = llama_batch_get_one(&new_token_id, 1);
+        int decode_result = llama_decode(context, next_batch);
+        printf("[DEBUG] Next token decode result: %d\n", decode_result);
+        fflush(stdout);
+        
+        if (decode_result) {
+            printf("[DEBUG] Next token decode failed, breaking generation\n");
+            fflush(stdout);
+            break;
+        }
+        
+        n_pos += 1;
         i++;
     }
     

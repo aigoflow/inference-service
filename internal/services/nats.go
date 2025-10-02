@@ -12,6 +12,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/aigoflow/inference-service/internal/config"
+	"github.com/aigoflow/inference-service/internal/repository"
 )
 
 // generateWorkerID creates a unique worker ID using timestamp and random bytes
@@ -24,16 +25,22 @@ func generateWorkerID() string {
 	return fmt.Sprintf("worker-%d-%s", timestamp, randomHex)
 }
 
+type ServiceInterface interface {
+	GetRepository() repository.Repository
+}
+
 type NATSService struct {
 	conn             *nats.Conn
 	js               nats.JetStreamContext
+	service          ServiceInterface
 	inferenceService *InferenceService
 	embeddingService *EmbeddingService
+	audioService     *AudioService
 	cfg              *config.Config
 	monitoring       *MonitoringService
 }
 
-func NewNATSService(cfg *config.Config, inferenceService *InferenceService) (*NATSService, error) {
+func NewNATSService(cfg *config.Config, service ServiceInterface) (*NATSService, error) {
 	// Connect to NATS
 	conn, err := nats.Connect(cfg.NatsURL)
 	if err != nil {
@@ -47,15 +54,22 @@ func NewNATSService(cfg *config.Config, inferenceService *InferenceService) (*NA
 		return nil, fmt.Errorf("failed to create JetStream context: %w", err)
 	}
 
-	service := &NATSService{
-		conn:             conn,
-		js:               js,
-		inferenceService: inferenceService,
-		cfg:              cfg,
-		monitoring:       NewMonitoringService(conn, cfg),
+	natsService := &NATSService{
+		conn:       conn,
+		js:         js,
+		service:    service,
+		cfg:        cfg,
+		monitoring: NewMonitoringService(conn, cfg),
 	}
 
-	return service, nil
+	// Set specific service types for backward compatibility
+	if inferenceService, ok := service.(*InferenceService); ok {
+		natsService.inferenceService = inferenceService
+	} else if audioService, ok := service.(*AudioService); ok {
+		natsService.audioService = audioService
+	}
+
+	return natsService, nil
 }
 
 func (s *NATSService) Start(ctx context.Context) error {
@@ -187,11 +201,14 @@ func (s *NATSService) processMessage(ctx context.Context, msg *nats.Msg, workerI
 	s.monitoring.IncrementActive()
 	defer s.monitoring.DecrementActive()
 	
-	// Determine if this is an embedding or inference request based on subject
+	// Determine the request type based on subject
 	isEmbeddingRequest := strings.Contains(msg.Subject, "embedding.request")
+	isAudioRequest := strings.Contains(msg.Subject, "audio.request") || strings.Contains(msg.Subject, "transcribe.request")
 	
 	if isEmbeddingRequest {
 		s.processEmbeddingMessage(ctx, msg, workerID)
+	} else if isAudioRequest {
+		s.processAudioMessage(ctx, msg, workerID)
 	} else {
 		s.processInferenceMessage(ctx, msg, workerID)
 	}
@@ -273,6 +290,95 @@ func (s *NATSService) processInferenceMessage(ctx context.Context, msg *nats.Msg
 			"tokens_out", response.TokensOut)
 	} else {
 		slog.Error("NATS inference failed",
+			"worker_id", workerID,
+			"req_id", req.ReqID,
+			"duration_ms", duration.Milliseconds(),
+			"error", err)
+	}
+}
+
+func (s *NATSService) processAudioMessage(ctx context.Context, msg *nats.Msg, workerID string) {
+	start := time.Now()
+	
+	// Parse audio request
+	var req AudioRequest
+	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		slog.Error("Failed to parse audio request", 
+			"worker_id", workerID, 
+			"error", err,
+			"data", string(msg.Data))
+		msg.Nak() // Negative acknowledgment
+		return
+	}
+
+	// Generate trace ID if not provided
+	if req.TraceID == "" {
+		req.TraceID = req.ReqID
+	}
+
+	slog.Debug("Processing NATS audio request",
+		"worker_id", workerID,
+		"req_id", req.ReqID,
+		"trace_id", req.TraceID,
+		"subject", msg.Subject)
+
+	// Audio service should be set during initialization, but handle the case where it's not
+	if s.audioService == nil {
+		slog.Error("Audio service not initialized - cannot process audio request", "worker_id", workerID)
+		msg.Nak()
+		return
+	}
+
+	// Process audio request
+	response, err := s.audioService.ProcessTranscription(
+		ctx, 
+		req, 
+		fmt.Sprintf("nats.%s", msg.Subject), 
+		req.ReplyTo,
+		workerID,
+	)
+
+	// Prepare response
+	responseData, marshalErr := json.Marshal(response)
+	if marshalErr != nil {
+		slog.Error("Failed to marshal audio response", 
+			"worker_id", workerID,
+			"req_id", req.ReqID, 
+			"error", marshalErr)
+		msg.Nak()
+		return
+	}
+
+	// Send response if reply subject is provided in message payload
+	if req.ReplyTo != "" {
+		if publishErr := s.conn.Publish(req.ReplyTo, responseData); publishErr != nil {
+			slog.Error("Failed to publish audio response", 
+				"worker_id", workerID,
+				"req_id", req.ReqID,
+				"reply_subject", req.ReplyTo, 
+				"error", publishErr)
+		}
+	}
+
+	// Acknowledge message
+	if ackErr := msg.Ack(); ackErr != nil {
+		slog.Error("Failed to acknowledge audio message", 
+			"worker_id", workerID,
+			"req_id", req.ReqID, 
+			"error", ackErr)
+	}
+
+	duration := time.Since(start)
+	
+	// Log successful processing
+	if err == nil {
+		slog.Info("NATS audio transcription completed",
+			"worker_id", workerID,
+			"req_id", req.ReqID,
+			"duration_ms", duration.Milliseconds(),
+			"segments_count", len(response.Segments))
+	} else {
+		slog.Error("NATS audio transcription failed",
 			"worker_id", workerID,
 			"req_id", req.ReqID,
 			"duration_ms", duration.Milliseconds(),
@@ -374,4 +480,12 @@ func (s *NATSService) GetConnection() *nats.Conn {
 
 func (s *NATSService) GetMonitoringService() *MonitoringService {
 	return s.monitoring
+}
+
+func (s *NATSService) SetAudioService(audioService *AudioService) {
+	s.audioService = audioService
+}
+
+func (s *NATSService) GetAudioService() *AudioService {
+	return s.audioService
 }

@@ -215,3 +215,4 @@ func (s *InferenceService) GetRequestLogs(ctx context.Context, limit int) ([]*mo
 func (s *InferenceService) GetRepository() repository.Repository {
 	return s.repo
 }
+

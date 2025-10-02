@@ -1,0 +1,14 @@
+Extract the following 10 key facts about the Byzantine Empire from the article:
+
+1. Start date of the Byzantine Empire:
+2. End date and final event:
+3. Original name of Constantinople:
+4. Last Byzantine emperor:
+5. Longest-reigning emperor mentioned:
+6. Date of the Great Schism with Western Christianity:
+7. Battle that led to major loss of Anatolia to the Seljuks:
+8. Year Constantinople was sacked during the Fourth Crusade:
+9. Population of Constantinople at its peak vs. at its fall:
+10. Primary language that replaced Latin for official use:
+
+Format each answer as a single line with just the essential information.

@@ -26,7 +26,14 @@ bin/inference-server: internal/llama/libbinding.a internal/llama/libllama.a $(sh
 	@echo "Building inference server..."
 	CGO_ENABLED=1 CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" go build -o bin/inference-server ./cmd/server
 
+# Build release version without debug symbols
+bin/inference-server-release: internal/llama/libbinding.a internal/llama/libllama.a $(shell find . -name "*.go" -not -path "./examples/*")
+	@echo "Building release inference server (no debug symbols)..."
+	CGO_ENABLED=1 CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" go build -ldflags="-s -w" -o bin/inference-server-release ./cmd/server
+
 build: bin/inference-server
+
+build-release: bin/inference-server-release
 
 # Build the NATS CLI clients
 build-cli:
@@ -72,7 +79,7 @@ list-workers:
 	done
 
 # Generic worker starter - usage: make start WORKER=gemma3-270m
-start: build
+start: build-release
 	@if [ -z "$(WORKER)" ]; then \
 		echo "Usage: make start WORKER=<name>"; \
 		echo "Available workers: $(WORKER_NAMES)"; \
@@ -87,7 +94,7 @@ start: build
 	@port=$$(grep "HTTP_ADDR=" envs/worker.$(WORKER).env | cut -d':' -f2); \
 	model=$$(grep "MODEL_NAME=" envs/worker.$(WORKER).env | cut -d'=' -f2); \
 	echo "Model: $$model, Port: $$port"; \
-	./bin/inference-server -env envs/worker.$(WORKER).env
+	DYLD_LIBRARY_PATH=./whisper.cpp/build/src:./internal/whisper ./bin/inference-server-release -env envs/worker.$(WORKER).env
 
 # Stop specific worker - usage: make stop WORKER=gemma3-270m
 stop:
